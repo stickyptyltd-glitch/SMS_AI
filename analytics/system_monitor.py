@@ -42,7 +42,7 @@ class UserActivity:
 class SystemMonitor:
     """Advanced system monitoring and analytics"""
     
-    def __init__(self, data_dir: str = "dayle_data"):
+    def __init__(self, data_dir: str = "synapseflow_data"):
         self.data_dir = data_dir
         self.analytics_dir = os.path.join(data_dir, "analytics")
         os.makedirs(self.analytics_dir, exist_ok=True)
@@ -383,6 +383,135 @@ class SystemMonitor:
                 
         except Exception as e:
             return {"error": f"Failed to get usage analytics: {e}"}
+
+    def get_predictive_analytics(self) -> Dict[str, Any]:
+        """Get predictive analytics and forecasting"""
+        try:
+            # Get historical metrics for trend analysis
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.execute("""
+                    SELECT cpu_percent, memory_percent, requests_per_minute,
+                           response_time_avg, error_rate, timestamp
+                    FROM system_metrics
+                    WHERE timestamp > datetime('now', '-24 hours')
+                    ORDER BY timestamp DESC
+                """)
+
+                historical_data = cursor.fetchall()
+
+            if len(historical_data) < 10:
+                return {"error": "Insufficient historical data for predictions"}
+
+            # Analyze trends
+            cpu_trend = self._calculate_trend([row[0] for row in historical_data])
+            memory_trend = self._calculate_trend([row[1] for row in historical_data])
+            response_time_trend = self._calculate_trend([row[3] for row in historical_data])
+
+            # Generate predictions
+            predictions = {
+                "cpu_forecast_1h": self._forecast_metric([row[0] for row in historical_data[-12:]], 1),
+                "memory_forecast_1h": self._forecast_metric([row[1] for row in historical_data[-12:]], 1),
+                "response_time_forecast_1h": self._forecast_metric([row[3] for row in historical_data[-12:]], 1),
+                "capacity_warnings": self._generate_capacity_warnings(historical_data)
+            }
+
+            return {
+                "trends": {
+                    "cpu_trend": cpu_trend,
+                    "memory_trend": memory_trend,
+                    "response_time_trend": response_time_trend
+                },
+                "predictions": predictions,
+                "data_points": len(historical_data),
+                "analysis_period_hours": 24
+            }
+
+        except Exception as e:
+            return {"error": f"Predictive analytics failed: {e}"}
+
+    def _calculate_trend(self, values: List[float]) -> str:
+        """Calculate trend direction from values"""
+        if len(values) < 2:
+            return "insufficient_data"
+
+        # Simple linear regression slope
+        n = len(values)
+        x_values = list(range(n))
+
+        x_mean = sum(x_values) / n
+        y_mean = sum(values) / n
+
+        numerator = sum((x_values[i] - x_mean) * (values[i] - y_mean) for i in range(n))
+        denominator = sum((x_values[i] - x_mean) ** 2 for i in range(n))
+
+        if denominator == 0:
+            return "stable"
+
+        slope = numerator / denominator
+
+        if slope > 0.1:
+            return "increasing"
+        elif slope < -0.1:
+            return "decreasing"
+        else:
+            return "stable"
+
+    def _forecast_metric(self, values: List[float], hours_ahead: int) -> Dict[str, Any]:
+        """Simple forecasting for a metric"""
+        if len(values) < 3:
+            return {"error": "Insufficient data"}
+
+        # Simple moving average forecast
+        recent_avg = sum(values[-3:]) / 3
+        overall_avg = sum(values) / len(values)
+
+        # Weight recent values more heavily
+        forecast = (recent_avg * 0.7) + (overall_avg * 0.3)
+
+        # Calculate confidence based on variance
+        variance = sum((v - overall_avg) ** 2 for v in values) / len(values)
+        confidence = max(0.1, min(0.9, 1 - (variance / (overall_avg + 1))))
+
+        return {
+            "forecast_value": round(forecast, 2),
+            "confidence": round(confidence, 2),
+            "trend": self._calculate_trend(values)
+        }
+
+    def _generate_capacity_warnings(self, historical_data: List) -> List[Dict]:
+        """Generate capacity planning warnings"""
+        warnings = []
+
+        if not historical_data:
+            return warnings
+
+        # Check CPU capacity
+        recent_cpu = [row[0] for row in historical_data[-12:]]  # Last 12 hours
+        if recent_cpu:
+            avg_cpu = sum(recent_cpu) / len(recent_cpu)
+
+            if avg_cpu > 70:
+                warnings.append({
+                    "type": "cpu_capacity",
+                    "severity": "high" if avg_cpu > 85 else "medium",
+                    "message": f"Average CPU usage is {avg_cpu:.1f}% over last 12 hours",
+                    "recommendation": "Consider scaling up CPU resources"
+                })
+
+        # Check memory capacity
+        recent_memory = [row[1] for row in historical_data[-12:]]
+        if recent_memory:
+            avg_memory = sum(recent_memory) / len(recent_memory)
+
+            if avg_memory > 75:
+                warnings.append({
+                    "type": "memory_capacity",
+                    "severity": "high" if avg_memory > 90 else "medium",
+                    "message": f"Average memory usage is {avg_memory:.1f}% over last 12 hours",
+                    "recommendation": "Consider scaling up memory resources"
+                })
+
+        return warnings
 
 # Global monitor instance
 _system_monitor = None

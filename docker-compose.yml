@@ -12,7 +12,7 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - ./dayle_data:/app/dayle_data
+      - ./synapseflow_data:/app/synapseflow_data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8081/health"]

@@ -8,11 +8,14 @@ import re
 import json
 import traceback
 import logging
-from datetime import datetime
+import time
+import threading
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union, Callable
 from functools import wraps
 from dataclasses import dataclass
 from enum import Enum
+from collections import defaultdict, deque
 
 class ErrorSeverity(Enum):
     LOW = "low"
@@ -59,6 +62,176 @@ class APIError(Exception):
         self.status_code = status_code
         self.error_code = error_code
         super().__init__(message)
+
+class CircuitBreakerState(Enum):
+    CLOSED = "closed"      # Normal operation
+    OPEN = "open"          # Failing, reject requests
+    HALF_OPEN = "half_open"  # Testing if service recovered
+
+class CircuitBreaker:
+    """Circuit breaker pattern implementation for fault tolerance"""
+
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60,
+                 expected_exception: type = Exception):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.expected_exception = expected_exception
+
+        self.failure_count = 0
+        self.last_failure_time = None
+        self.state = CircuitBreakerState.CLOSED
+        self.lock = threading.RLock()
+
+    def __call__(self, func):
+        """Decorator to apply circuit breaker to a function"""
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            with self.lock:
+                if self.state == CircuitBreakerState.OPEN:
+                    if self._should_attempt_reset():
+                        self.state = CircuitBreakerState.HALF_OPEN
+                    else:
+                        raise APIError("Circuit breaker is OPEN", 503, "CIRCUIT_BREAKER_OPEN")
+
+                try:
+                    result = func(*args, **kwargs)
+                    self._on_success()
+                    return result
+                except self.expected_exception as e:
+                    self._on_failure()
+                    raise
+
+        return wrapper
+
+    def _should_attempt_reset(self) -> bool:
+        """Check if enough time has passed to attempt reset"""
+        return (self.last_failure_time and
+                time.time() - self.last_failure_time >= self.recovery_timeout)
+
+    def _on_success(self):
+        """Handle successful operation"""
+        self.failure_count = 0
+        self.state = CircuitBreakerState.CLOSED
+
+    def _on_failure(self):
+        """Handle failed operation"""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+
+        if self.failure_count >= self.failure_threshold:
+            self.state = CircuitBreakerState.OPEN
+
+    def get_state(self) -> Dict[str, Any]:
+        """Get current circuit breaker state"""
+        return {
+            "state": self.state.value,
+            "failure_count": self.failure_count,
+            "failure_threshold": self.failure_threshold,
+            "last_failure_time": self.last_failure_time,
+            "time_until_retry": max(0, self.recovery_timeout - (time.time() - (self.last_failure_time or 0)))
+        }
+
+class RetryMechanism:
+    """Advanced retry mechanism with exponential backoff"""
+
+    def __init__(self, max_attempts: int = 3, base_delay: float = 1.0,
+                 max_delay: float = 60.0, exponential_base: float = 2.0,
+                 jitter: bool = True):
+        self.max_attempts = max_attempts
+        self.base_delay = base_delay
+        self.max_delay = max_delay
+        self.exponential_base = exponential_base
+        self.jitter = jitter
+
+    def __call__(self, func):
+        """Decorator to apply retry mechanism to a function"""
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+
+            for attempt in range(self.max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+
+                    if attempt == self.max_attempts - 1:
+                        # Last attempt failed, raise the exception
+                        raise
+
+                    # Calculate delay with exponential backoff
+                    delay = min(
+                        self.base_delay * (self.exponential_base ** attempt),
+                        self.max_delay
+                    )
+
+                    # Add jitter to prevent thundering herd
+                    if self.jitter:
+                        import random
+                        delay *= (0.5 + random.random() * 0.5)
+
+                    time.sleep(delay)
+
+            # This should never be reached, but just in case
+            raise last_exception
+
+        return wrapper
+
+class GracefulDegradation:
+    """Graceful degradation manager for service failures"""
+
+    def __init__(self):
+        self.fallback_handlers = {}
+        self.service_health = defaultdict(lambda: {"healthy": True, "last_check": time.time()})
+
+    def register_fallback(self, service_name: str, fallback_func: Callable):
+        """Register a fallback function for a service"""
+        self.fallback_handlers[service_name] = fallback_func
+
+    def with_fallback(self, service_name: str, primary_func: Callable, *args, **kwargs):
+        """Execute function with fallback support"""
+        try:
+            result = primary_func(*args, **kwargs)
+            self._mark_service_healthy(service_name)
+            return result
+        except Exception as e:
+            self._mark_service_unhealthy(service_name)
+
+            if service_name in self.fallback_handlers:
+                try:
+                    return self.fallback_handlers[service_name](*args, **kwargs)
+                except Exception as fallback_error:
+                    # Both primary and fallback failed
+                    raise APIError(
+                        f"Both primary and fallback failed for {service_name}",
+                        503,
+                        "DEGRADED_SERVICE_FAILURE"
+                    )
+            else:
+                # No fallback available
+                raise APIError(
+                    f"Service {service_name} failed and no fallback available",
+                    503,
+                    "NO_FALLBACK_AVAILABLE"
+                )
+
+    def _mark_service_healthy(self, service_name: str):
+        """Mark service as healthy"""
+        self.service_health[service_name] = {
+            "healthy": True,
+            "last_check": time.time()
+        }
+
+    def _mark_service_unhealthy(self, service_name: str):
+        """Mark service as unhealthy"""
+        self.service_health[service_name] = {
+            "healthy": False,
+            "last_check": time.time()
+        }
+
+    def get_service_health(self) -> Dict[str, Any]:
+        """Get health status of all services"""
+        return dict(self.service_health)
 
 class InputValidator:
     """Comprehensive input validation"""
@@ -209,10 +382,15 @@ class InputValidator:
 class ErrorHandler:
     """Centralized error handling"""
     
-    def __init__(self, log_file: str = "dayle_data/errors.log"):
+    def __init__(self, log_file: str = "synapseflow_data/errors.log"):
         self.log_file = log_file
         self.setup_logging()
         self.error_counts = {}
+        self.error_history = []
+        self.circuit_breakers = {}
+        self.graceful_degradation = GracefulDegradation()
+        self.error_patterns = defaultdict(int)
+        self.recovery_attempts = defaultdict(int)
     
     def setup_logging(self):
         """Setup error logging"""
@@ -396,6 +574,96 @@ def validate_json_input(required_fields: List[str] = None,
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+    def get_circuit_breaker(self, service_name: str, **kwargs) -> CircuitBreaker:
+        """Get or create circuit breaker for a service"""
+        if service_name not in self.circuit_breakers:
+            self.circuit_breakers[service_name] = CircuitBreaker(**kwargs)
+        return self.circuit_breakers[service_name]
+
+    def with_circuit_breaker(self, service_name: str, func: Callable, *args, **kwargs):
+        """Execute function with circuit breaker protection"""
+        circuit_breaker = self.get_circuit_breaker(service_name)
+        return circuit_breaker(func)(*args, **kwargs)
+
+    def with_retry(self, func: Callable, max_attempts: int = 3, **retry_kwargs):
+        """Execute function with retry mechanism"""
+        retry_mechanism = RetryMechanism(max_attempts=max_attempts, **retry_kwargs)
+        return retry_mechanism(func)
+
+    def with_graceful_degradation(self, service_name: str, primary_func: Callable,
+                                 fallback_func: Callable = None, *args, **kwargs):
+        """Execute function with graceful degradation"""
+        if fallback_func:
+            self.graceful_degradation.register_fallback(service_name, fallback_func)
+
+        return self.graceful_degradation.with_fallback(service_name, primary_func, *args, **kwargs)
+
+    def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
+        """Get comprehensive error summary"""
+        cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+
+        recent_errors = [
+            error for error in self.error_history
+            if datetime.fromisoformat(error.timestamp) > cutoff_time
+        ]
+
+        if not recent_errors:
+            return {
+                "total_errors": 0,
+                "error_rate": 0,
+                "categories": {},
+                "severity_distribution": {},
+                "recommendations": [],
+                "health_score": 100.0
+            }
+
+        # Analyze error patterns
+        categories = defaultdict(int)
+        severities = defaultdict(int)
+        error_trends = defaultdict(list)
+
+        for error in recent_errors:
+            categories[error.category.value] += 1
+            severities[error.severity.value] += 1
+
+            # Track error trends by hour
+            error_hour = datetime.fromisoformat(error.timestamp).hour
+            error_trends[error_hour].append(error)
+
+        # Calculate health score
+        total_errors = len(recent_errors)
+        critical_errors = severities["critical"]
+        high_errors = severities["high"]
+
+        health_score = max(0, 100 - (critical_errors * 20) - (high_errors * 10) - (total_errors * 2))
+
+        return {
+            "total_errors": total_errors,
+            "error_rate": total_errors / hours,
+            "categories": dict(categories),
+            "severity_distribution": dict(severities),
+            "recommendations": self._generate_recommendations(categories, severities),
+            "time_period_hours": hours,
+            "health_score": health_score,
+            "circuit_breaker_states": {name: cb.get_state() for name, cb in self.circuit_breakers.items()},
+            "service_health": self.graceful_degradation.get_service_health()
+        }
+
+    def _generate_recommendations(self, categories: Dict, severities: Dict) -> List[str]:
+        """Generate error handling recommendations"""
+        recommendations = []
+
+        if categories.get("external_api", 0) > 5:
+            recommendations.append("Implement circuit breakers for external APIs")
+        if categories.get("validation", 0) > 10:
+            recommendations.append("Review input validation rules")
+        if severities.get("critical", 0) > 0:
+            recommendations.append("Immediate attention required for critical errors")
+        if categories.get("rate_limit", 0) > 20:
+            recommendations.append("Consider scaling or optimizing rate limits")
+
+        return recommendations
 
 # Global error handler instance
 _error_handler = None

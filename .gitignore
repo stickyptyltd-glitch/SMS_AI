@@ -6,7 +6,7 @@ __pycache__/
 *.pyc
 
 # User data and runtime files (contains sensitive info)
-dayle_data/
+synapseflow_data/
 *.jsonl
 
 # Environment files (contain API keys)

@@ -5,7 +5,7 @@ import requests, subprocess, json, os
 app = Flask(__name__)
 CORS(app)
 
-DATA_DIR = "dayle_data"
+DATA_DIR = "synapseflow_data"
 PROFILE = os.path.join(DATA_DIR, "profile.json")
 FEEDBACK = os.path.join(DATA_DIR, "feedback.jsonl")
 os.makedirs(DATA_DIR, exist_ok=True)

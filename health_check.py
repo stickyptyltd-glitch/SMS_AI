@@ -29,7 +29,7 @@ class HealthChecker:
             "component": component,
             "status": status,  # "pass", "fail", "warning"
             "message": message,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(datetime.timezone.utc).isoformat(),
             "details": details
         }
         self.results.append(result)
@@ -55,12 +55,17 @@ class HealthChecker:
             ("flask", "Flask web framework"),
             ("requests", "HTTP library"),
             ("psutil", "System monitoring"),
-            ("python-dotenv", "Environment variables")
+            ("python-dotenv", "Environment variables"),
+            ("scikit-learn", "Machine learning"),
+            ("numpy", "Numerical computing"),
+            ("aiohttp", "Async HTTP client")
         ]
-        
+
         optional_packages = [
             ("pytest", "Testing framework"),
-            ("openai", "OpenAI API client")
+            ("openai", "OpenAI API client"),
+            ("redis", "Redis caching"),
+            ("anthropic", "Anthropic API client")
         ]
         
         for package, description in required_packages:
@@ -85,16 +90,22 @@ class HealthChecker:
             "ai/analysis.py",
             "ai/generator.py",
             "ai/conversation_context.py",
+            "ai/multi_model_manager.py",
+            "ai/adaptive_learning.py",
             "analytics/system_monitor.py",
             "utils/error_handling.py",
-            "security/advanced_security.py"
+            "security/advanced_security.py",
+            "integrations/webhook_manager.py",
+            "performance/cache_manager.py"
         ]
-        
+
         required_dirs = [
             "ai/",
             "analytics/",
             "utils/",
             "security/",
+            "integrations/",
+            "performance/",
             "tests/"
         ]
         
@@ -138,11 +149,11 @@ class HealthChecker:
     def check_data_directories(self):
         """Check data directories and permissions"""
         data_dirs = [
-            "dayle_data/",
-            "dayle_data/users/",
-            "dayle_data/conversations/",
-            "dayle_data/analytics/",
-            "dayle_data/security/"
+            "synapseflow_data/",
+            "synapseflow_data/users/",
+            "synapseflow_data/conversations/",
+            "synapseflow_data/analytics/",
+            "synapseflow_data/security/"
         ]
         
         for dir_path in data_dirs:
@@ -296,10 +307,10 @@ class HealthChecker:
         """Check analytics and monitoring"""
         try:
             from analytics.system_monitor import SystemMonitor
-            
+
             system_monitor = SystemMonitor()
             health = system_monitor.get_system_health()
-            
+
             if "health_score" in health:
                 score = health["health_score"]
                 if score >= 80:
@@ -310,9 +321,77 @@ class HealthChecker:
                     self.log_result("System Analytics", "fail", f"Low system health score: {score}")
             else:
                 self.log_result("System Analytics", "warning", "Could not get system health score")
-                
+
         except Exception as e:
             self.log_result("System Analytics", "fail", f"Analytics check failed: {e}")
+
+    def check_advanced_features(self):
+        """Check advanced features"""
+        # Multi-model AI system
+        try:
+            from ai.multi_model_manager import get_multi_model_manager
+
+            multi_model_manager = get_multi_model_manager()
+            if multi_model_manager.models:
+                model_count = len(multi_model_manager.models)
+                self.log_result("Multi-Model AI", "pass", f"{model_count} AI models configured")
+            else:
+                self.log_result("Multi-Model AI", "warning", "No AI models configured")
+
+        except Exception as e:
+            self.log_result("Multi-Model AI", "fail", f"Multi-model system check failed: {e}")
+
+        # Adaptive learning system
+        try:
+            from ai.adaptive_learning import get_adaptive_learning_system
+
+            learning_system = get_adaptive_learning_system()
+            stats = learning_system.get_learning_stats()
+
+            if stats["total_examples"] > 0:
+                self.log_result("Adaptive Learning", "pass", f"{stats['total_examples']} learning examples")
+            else:
+                self.log_result("Adaptive Learning", "pass", "Adaptive learning system ready")
+
+        except Exception as e:
+            self.log_result("Adaptive Learning", "fail", f"Learning system check failed: {e}")
+
+        # Webhook system
+        try:
+            from integrations.webhook_manager import get_webhook_manager
+
+            webhook_manager = get_webhook_manager()
+            stats = webhook_manager.get_webhook_stats()
+
+            if "total_webhooks" in stats:
+                webhook_count = stats["total_webhooks"]
+                self.log_result("Webhook System", "pass", f"{webhook_count} webhooks configured")
+            else:
+                self.log_result("Webhook System", "pass", "Webhook system ready")
+
+        except Exception as e:
+            self.log_result("Webhook System", "fail", f"Webhook system check failed: {e}")
+
+        # Cache system
+        try:
+            from performance.cache_manager import get_cache_manager
+
+            cache_manager = get_cache_manager()
+            stats = cache_manager.get_performance_stats()
+
+            if "overall_hit_rate" in stats:
+                hit_rate = stats["overall_hit_rate"]
+                if hit_rate > 0.5:
+                    self.log_result("Cache System", "pass", f"Cache hit rate: {hit_rate:.1%}")
+                elif hit_rate > 0:
+                    self.log_result("Cache System", "warning", f"Low cache hit rate: {hit_rate:.1%}")
+                else:
+                    self.log_result("Cache System", "pass", "Cache system ready")
+            else:
+                self.log_result("Cache System", "pass", "Cache system initialized")
+
+        except Exception as e:
+            self.log_result("Cache System", "fail", f"Cache system check failed: {e}")
     
     def run_all_checks(self):
         """Run all health checks"""
@@ -330,7 +409,8 @@ class HealthChecker:
             ("AI Components", self.check_ai_components),
             ("Security Components", self.check_security_components),
             ("User Management", self.check_user_management),
-            ("Analytics", self.check_analytics)
+            ("Analytics", self.check_analytics),
+            ("Advanced Features", self.check_advanced_features)
         ]
         
         for check_name, check_func in checks:
@@ -397,7 +477,7 @@ class HealthChecker:
         # Save detailed results
         with open("health_check_results.json", "w") as f:
             json.dump({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(datetime.timezone.utc).isoformat(),
                 "summary": {
                     "passed": passed,
                     "failed": failed,

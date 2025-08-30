@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 - `ai/`: Analysis, reply generation, and summaries.
-- `server.py`: Flask API that analyzes, drafts, and stores memory in `dayle_data/`.
+- `server.py`: Flask API that analyzes, drafts, and stores memory in `synapseflow_data/`.
 - `test_client.py`: CLI + local webhooks (Twilio, Messenger, KDE Connect).
 - `tests/`: Pytest suite (`test_*.py`).
 - `docker/` + `docker-compose.yml`: Production Docker images for webhooks.
@@ -37,5 +37,5 @@
 ## Security & Configuration Tips
 - Never commit secrets. Use `.env` (see `.env.example`).
 - Validate inputs (phone numbers, message text); keep HTTP timeouts.
-- Persisted data lives under `dayle_data/`; treat it as runtime state, not source.
+- Persisted data lives under `synapseflow_data/`; treat it as runtime state, not source.
 - Expose webhooks via HTTPS only in production; verify Messenger signatures and escape TwiML.

@@ -11,6 +11,6 @@ build
 dist
 *.apk
 *.aab
-dayle_data
+synapseflow_data
 licensing/issuer_secret.key
 .env

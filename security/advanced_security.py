@@ -10,7 +10,7 @@ import hmac
 import secrets
 import ipaddress
 from datetime import datetime, timedelta
-from typing import Dict, List, Set, Optional, Tuple
+from typing import Dict, List, Set, Optional, Tuple, Any
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from functools import wraps
@@ -106,7 +106,7 @@ class RateLimiter:
 class SecurityMonitor:
     """Advanced security monitoring and threat detection"""
     
-    def __init__(self, data_dir: str = "dayle_data"):
+    def __init__(self, data_dir: str = "synapseflow_data"):
         self.data_dir = data_dir
         self.security_dir = os.path.join(data_dir, "security")
         os.makedirs(self.security_dir, exist_ok=True)
@@ -285,6 +285,160 @@ class SecurityMonitor:
             "suspicious_ips": len(self.rate_limiter.suspicious_ips),
             "active_rate_limits": len(self.rate_limiter.requests)
         }
+
+    def get_advanced_security_analytics(self) -> Dict[str, Any]:
+        """Get advanced security analytics and threat intelligence"""
+        now = time.time()
+        last_24h = now - 86400
+        last_1h = now - 3600
+
+        recent_events = [e for e in self.security_events
+                        if datetime.fromisoformat(e.timestamp.replace('Z', '+00:00')).timestamp() > last_24h]
+        hourly_events = [e for e in self.security_events
+                        if datetime.fromisoformat(e.timestamp.replace('Z', '+00:00')).timestamp() > last_1h]
+
+        # Calculate threat level
+        threat_level = self._calculate_threat_level(recent_events, hourly_events)
+
+        # Get top attackers
+        top_attackers = self._get_top_attackers(recent_events)
+
+        # Attack pattern analysis
+        attack_patterns = self._analyze_attack_patterns(recent_events)
+
+        # Generate recommendations
+        recommendations = self._generate_security_recommendations(recent_events)
+
+        return {
+            "threat_level": threat_level,
+            "top_attackers": top_attackers,
+            "attack_patterns": attack_patterns,
+            "security_recommendations": recommendations,
+            "events_last_hour": len(hourly_events),
+            "events_last_24h": len(recent_events)
+        }
+
+    def _calculate_threat_level(self, recent_events: List, hourly_events: List) -> str:
+        """Calculate current threat level"""
+        if not recent_events:
+            return "low"
+
+        # Count high-severity events
+        high_severity_count = len([e for e in recent_events if e.severity == "high"])
+        critical_count = len([e for e in recent_events if e.severity == "critical"])
+
+        # Check for recent spikes
+        hourly_rate = len(hourly_events)
+        daily_rate = len(recent_events) / 24
+
+        if critical_count > 0 or hourly_rate > daily_rate * 5:
+            return "critical"
+        elif high_severity_count > 10 or hourly_rate > daily_rate * 3:
+            return "high"
+        elif high_severity_count > 5 or len(recent_events) > 50:
+            return "medium"
+        else:
+            return "low"
+
+    def _get_top_attackers(self, recent_events: List, limit: int = 5) -> List[Dict]:
+        """Get top attacking IP addresses"""
+        ip_counts = {}
+        for event in recent_events:
+            ip = event.source_ip
+            if ip:
+                if ip not in ip_counts:
+                    ip_counts[ip] = {"count": 0, "severity_score": 0, "event_types": set()}
+
+                ip_counts[ip]["count"] += 1
+                ip_counts[ip]["event_types"].add(event.event_type)
+
+                # Add severity score
+                severity_scores = {"low": 1, "medium": 2, "high": 3, "critical": 5}
+                ip_counts[ip]["severity_score"] += severity_scores.get(event.severity, 1)
+
+        # Sort by combined score (count + severity)
+        sorted_ips = sorted(
+            ip_counts.items(),
+            key=lambda x: x[1]["count"] + x[1]["severity_score"],
+            reverse=True
+        )
+
+        return [
+            {
+                "ip": ip,
+                "event_count": data["count"],
+                "severity_score": data["severity_score"],
+                "event_types": list(data["event_types"]),
+                "risk_level": "high" if data["severity_score"] > 10 else "medium" if data["severity_score"] > 5 else "low"
+            }
+            for ip, data in sorted_ips[:limit]
+        ]
+
+    def _analyze_attack_patterns(self, recent_events: List) -> Dict[str, Any]:
+        """Analyze attack patterns and trends"""
+        if not recent_events:
+            return {}
+
+        # Time-based analysis
+        hourly_distribution = {}
+        for event in recent_events:
+            event_time = datetime.fromisoformat(event.timestamp.replace('Z', '+00:00'))
+            hour = event_time.hour
+            hourly_distribution[hour] = hourly_distribution.get(hour, 0) + 1
+
+        # Find peak attack hours
+        peak_hour = max(hourly_distribution, key=hourly_distribution.get) if hourly_distribution else None
+
+        # Event type trends
+        event_type_counts = {}
+        for event in recent_events:
+            event_type_counts[event.event_type] = event_type_counts.get(event.event_type, 0) + 1
+
+        return {
+            "hourly_distribution": hourly_distribution,
+            "peak_attack_hour": peak_hour,
+            "most_common_attacks": sorted(event_type_counts.items(), key=lambda x: x[1], reverse=True)[:5],
+            "attack_frequency": len(recent_events) / 24  # attacks per hour
+        }
+
+    def _generate_security_recommendations(self, recent_events: List) -> List[Dict]:
+        """Generate security recommendations based on recent events"""
+        recommendations = []
+
+        if not recent_events:
+            return recommendations
+
+        # Check for brute force attacks
+        brute_force_count = len([e for e in recent_events if e.event_type == "brute_force_attempt"])
+        if brute_force_count > 10:
+            recommendations.append({
+                "priority": "high",
+                "type": "brute_force_protection",
+                "message": f"{brute_force_count} brute force attempts detected",
+                "action": "Consider implementing CAPTCHA or account lockout policies"
+            })
+
+        # Check for SQL injection attempts
+        sql_injection_count = len([e for e in recent_events if e.event_type == "sql_injection_attempt"])
+        if sql_injection_count > 5:
+            recommendations.append({
+                "priority": "critical",
+                "type": "sql_injection_protection",
+                "message": f"{sql_injection_count} SQL injection attempts detected",
+                "action": "Review and strengthen input validation and parameterized queries"
+            })
+
+        # Check for high rate limiting
+        rate_limit_count = len([e for e in recent_events if e.event_type == "rate_limit_exceeded"])
+        if rate_limit_count > 50:
+            recommendations.append({
+                "priority": "medium",
+                "type": "rate_limiting",
+                "message": f"{rate_limit_count} rate limit violations",
+                "action": "Consider adjusting rate limits or implementing progressive penalties"
+            })
+
+        return recommendations
 
 class SecurityHeaders:
     """Security headers management"""

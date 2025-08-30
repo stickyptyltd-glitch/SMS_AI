@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="au.st1cky.smsautoframe">
+    package="com.stickyptyltd.synapseflow">
 
     <uses-permission android:name="android.permission.RECEIVE_SMS"/>
     <uses-permission android:name="android.permission.SEND_SMS"/>
@@ -16,7 +16,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="Dayle SMS AutoReply"
+        android:label="SynapseFlow AI"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
@@ -24,7 +24,7 @@
 
         <service
             android:name=".notify.SmartNotificationListener"
-            android:label="Dayle Notification Access"
+            android:label="SynapseFlow AI Notifications"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">
             <intent-filter>

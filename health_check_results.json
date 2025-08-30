@@ -1,333 +1,438 @@
 {
-  "timestamp": "2025-08-30T09:47:34.395857",
+  "timestamp": "2025-08-30T21:17:54.955252",
   "summary": {
-    "passed": 45,
-    "failed": 1,
-    "warnings": 0,
-    "total": 46,
-    "health_score": 97.82608695652173
+    "passed": 58,
+    "failed": 2,
+    "warnings": 1,
+    "total": 61,
+    "health_score": 95.08196721311475
   },
   "results": [
     {
       "component": "Python Version",
       "status": "pass",
       "message": "Python 3.13.5",
-      "timestamp": "2025-08-30T09:47:30.667186",
+      "timestamp": "2025-08-30T21:17:41.504412",
       "details": null
     },
     {
       "component": "Dependency: flask",
       "status": "pass",
       "message": "Flask web framework - Available",
-      "timestamp": "2025-08-30T09:47:30.979428",
+      "timestamp": "2025-08-30T21:17:41.970448",
       "details": null
     },
     {
       "component": "Dependency: requests",
       "status": "pass",
       "message": "HTTP library - Available",
-      "timestamp": "2025-08-30T09:47:30.979507",
+      "timestamp": "2025-08-30T21:17:41.970529",
       "details": null
     },
     {
       "component": "Dependency: psutil",
       "status": "pass",
       "message": "System monitoring - Available",
-      "timestamp": "2025-08-30T09:47:31.014547",
+      "timestamp": "2025-08-30T21:17:42.032163",
       "details": null
     },
     {
       "component": "Dependency: python-dotenv",
       "status": "fail",
       "message": "Environment variables - Missing (pip install python-dotenv)",
-      "timestamp": "2025-08-30T09:47:31.014896",
+      "timestamp": "2025-08-30T21:17:42.032698",
+      "details": null
+    },
+    {
+      "component": "Dependency: scikit-learn",
+      "status": "fail",
+      "message": "Machine learning - Missing (pip install scikit-learn)",
+      "timestamp": "2025-08-30T21:17:42.033097",
+      "details": null
+    },
+    {
+      "component": "Dependency: numpy",
+      "status": "pass",
+      "message": "Numerical computing - Available",
+      "timestamp": "2025-08-30T21:17:42.577490",
+      "details": null
+    },
+    {
+      "component": "Dependency: aiohttp",
+      "status": "pass",
+      "message": "Async HTTP client - Available",
+      "timestamp": "2025-08-30T21:17:43.317043",
       "details": null
     },
     {
       "component": "Optional: pytest",
       "status": "pass",
       "message": "Testing framework - Available",
-      "timestamp": "2025-08-30T09:47:31.280914",
+      "timestamp": "2025-08-30T21:17:43.815042",
       "details": null
     },
     {
       "component": "Optional: openai",
       "status": "pass",
       "message": "OpenAI API client - Available",
-      "timestamp": "2025-08-30T09:47:33.073096",
+      "timestamp": "2025-08-30T21:17:47.007766",
+      "details": null
+    },
+    {
+      "component": "Optional: redis",
+      "status": "pass",
+      "message": "Redis caching - Available",
+      "timestamp": "2025-08-30T21:17:47.261187",
+      "details": null
+    },
+    {
+      "component": "Optional: anthropic",
+      "status": "pass",
+      "message": "Anthropic API client - Available",
+      "timestamp": "2025-08-30T21:17:48.133692",
       "details": null
     },
     {
       "component": "File: server.py",
       "status": "pass",
       "message": "File exists",
-      "timestamp": "2025-08-30T09:47:33.073211",
+      "timestamp": "2025-08-30T21:17:48.133832",
       "details": null
     },
     {
       "component": "File: user_management.py",
       "status": "pass",
       "message": "File exists",
-      "timestamp": "2025-08-30T09:47:33.073244",
+      "timestamp": "2025-08-30T21:17:48.133873",
       "details": null
     },
     {
       "component": "File: ai/analysis.py",
       "status": "pass",
       "message": "File exists",
-      "timestamp": "2025-08-30T09:47:33.073267",
+      "timestamp": "2025-08-30T21:17:48.133904",
       "details": null
     },
     {
       "component": "File: ai/generator.py",
       "status": "pass",
       "message": "File exists",
-      "timestamp": "2025-08-30T09:47:33.073285",
+      "timestamp": "2025-08-30T21:17:48.133928",
       "details": null
     },
     {
       "component": "File: ai/conversation_context.py",
       "status": "pass",
       "message": "File exists",
-      "timestamp": "2025-08-30T09:47:33.073304",
+      "timestamp": "2025-08-30T21:17:48.133950",
+      "details": null
+    },
+    {
+      "component": "File: ai/multi_model_manager.py",
+      "status": "pass",
+      "message": "File exists",
+      "timestamp": "2025-08-30T21:17:48.133973",
+      "details": null
+    },
+    {
+      "component": "File: ai/adaptive_learning.py",
+      "status": "pass",
+      "message": "File exists",
+      "timestamp": "2025-08-30T21:17:48.134009",
       "details": null
     },
     {
       "component": "File: analytics/system_monitor.py",
       "status": "pass",
       "message": "File exists",
-      "timestamp": "2025-08-30T09:47:33.073323",
+      "timestamp": "2025-08-30T21:17:48.134058",
       "details": null
     },
     {
       "component": "File: utils/error_handling.py",
       "status": "pass",
       "message": "File exists",
-      "timestamp": "2025-08-30T09:47:33.073339",
+      "timestamp": "2025-08-30T21:17:48.134116",
       "details": null
     },
     {
       "component": "File: security/advanced_security.py",
       "status": "pass",
       "message": "File exists",
-      "timestamp": "2025-08-30T09:47:33.073355",
+      "timestamp": "2025-08-30T21:17:48.134153",
+      "details": null
+    },
+    {
+      "component": "File: integrations/webhook_manager.py",
+      "status": "pass",
+      "message": "File exists",
+      "timestamp": "2025-08-30T21:17:48.134191",
+      "details": null
+    },
+    {
+      "component": "File: performance/cache_manager.py",
+      "status": "pass",
+      "message": "File exists",
+      "timestamp": "2025-08-30T21:17:48.134286",
       "details": null
     },
     {
       "component": "Directory: ai/",
       "status": "pass",
       "message": "Directory exists",
-      "timestamp": "2025-08-30T09:47:33.073400",
+      "timestamp": "2025-08-30T21:17:48.134333",
       "details": null
     },
     {
       "component": "Directory: analytics/",
       "status": "pass",
       "message": "Directory exists",
-      "timestamp": "2025-08-30T09:47:33.073425",
+      "timestamp": "2025-08-30T21:17:48.134371",
       "details": null
     },
     {
       "component": "Directory: utils/",
       "status": "pass",
       "message": "Directory exists",
-      "timestamp": "2025-08-30T09:47:33.073447",
+      "timestamp": "2025-08-30T21:17:48.134420",
       "details": null
     },
     {
       "component": "Directory: security/",
       "status": "pass",
       "message": "Directory exists",
-      "timestamp": "2025-08-30T09:47:33.073467",
+      "timestamp": "2025-08-30T21:17:48.134456",
+      "details": null
+    },
+    {
+      "component": "Directory: integrations/",
+      "status": "pass",
+      "message": "Directory exists",
+      "timestamp": "2025-08-30T21:17:48.134480",
+      "details": null
+    },
+    {
+      "component": "Directory: performance/",
+      "status": "pass",
+      "message": "Directory exists",
+      "timestamp": "2025-08-30T21:17:48.134522",
       "details": null
     },
     {
       "component": "Directory: tests/",
       "status": "pass",
       "message": "Directory exists",
-      "timestamp": "2025-08-30T09:47:33.073488",
+      "timestamp": "2025-08-30T21:17:48.134549",
       "details": null
     },
     {
       "component": "Configuration: .env",
       "status": "pass",
       "message": ".env file exists",
-      "timestamp": "2025-08-30T09:47:33.073517",
+      "timestamp": "2025-08-30T21:17:48.134587",
       "details": null
     },
     {
       "component": "Config: OPENAI_API_KEY",
       "status": "pass",
       "message": "OPENAI_API_KEY configured",
-      "timestamp": "2025-08-30T09:47:33.073697",
+      "timestamp": "2025-08-30T21:17:48.134982",
       "details": null
     },
     {
       "component": "Config: USE_OPENAI",
       "status": "pass",
       "message": "USE_OPENAI configured",
-      "timestamp": "2025-08-30T09:47:33.073715",
+      "timestamp": "2025-08-30T21:17:48.135007",
       "details": null
     },
     {
       "component": "Config: ADMIN_TOKEN",
       "status": "pass",
       "message": "ADMIN_TOKEN configured",
-      "timestamp": "2025-08-30T09:47:33.073725",
+      "timestamp": "2025-08-30T21:17:48.135020",
       "details": null
     },
     {
       "component": "Configuration: .env.example",
       "status": "pass",
       "message": "Example configuration exists",
-      "timestamp": "2025-08-30T09:47:33.073749",
+      "timestamp": "2025-08-30T21:17:48.135049",
       "details": null
     },
     {
-      "component": "Data Dir: dayle_data/",
+      "component": "Data Dir: synapseflow_data/",
       "status": "pass",
       "message": "Directory accessible",
-      "timestamp": "2025-08-30T09:47:33.073806",
+      "timestamp": "2025-08-30T21:17:48.135114",
       "details": null
     },
     {
-      "component": "Data Dir: dayle_data/users/",
+      "component": "Data Dir: synapseflow_data/users/",
       "status": "pass",
       "message": "Directory accessible",
-      "timestamp": "2025-08-30T09:47:33.073835",
+      "timestamp": "2025-08-30T21:17:48.135145",
       "details": null
     },
     {
-      "component": "Data Dir: dayle_data/conversations/",
+      "component": "Data Dir: synapseflow_data/conversations/",
       "status": "pass",
       "message": "Directory accessible",
-      "timestamp": "2025-08-30T09:47:33.073856",
+      "timestamp": "2025-08-30T21:17:48.135359",
       "details": null
     },
     {
-      "component": "Data Dir: dayle_data/analytics/",
+      "component": "Data Dir: synapseflow_data/analytics/",
       "status": "pass",
       "message": "Directory accessible",
-      "timestamp": "2025-08-30T09:47:33.073876",
+      "timestamp": "2025-08-30T21:17:48.135390",
       "details": null
     },
     {
-      "component": "Data Dir: dayle_data/security/",
+      "component": "Data Dir: synapseflow_data/security/",
       "status": "pass",
       "message": "Directory accessible",
-      "timestamp": "2025-08-30T09:47:33.073895",
+      "timestamp": "2025-08-30T21:17:48.135423",
       "details": null
     },
     {
       "component": "Server Import",
       "status": "pass",
       "message": "Server module imports successfully",
-      "timestamp": "2025-08-30T09:47:33.218618",
+      "timestamp": "2025-08-30T21:17:53.630074",
       "details": null
     },
     {
       "component": "Flask App",
       "status": "pass",
       "message": "Flask application created",
-      "timestamp": "2025-08-30T09:47:33.218652",
+      "timestamp": "2025-08-30T21:17:53.630139",
       "details": null
     },
     {
       "component": "Server Health",
       "status": "pass",
       "message": "Server is running and healthy",
-      "timestamp": "2025-08-30T09:47:33.227395",
+      "timestamp": "2025-08-30T21:17:53.646178",
       "details": null
     },
     {
       "component": "Endpoint: /",
       "status": "pass",
       "message": "Landing page accessible",
-      "timestamp": "2025-08-30T09:47:33.233570",
+      "timestamp": "2025-08-30T21:17:53.655489",
       "details": null
     },
     {
       "component": "Endpoint: /config",
       "status": "pass",
       "message": "Configuration endpoint accessible",
-      "timestamp": "2025-08-30T09:47:33.240532",
+      "timestamp": "2025-08-30T21:17:53.664755",
       "details": null
     },
     {
       "component": "Endpoint: /profile",
-      "status": "pass",
-      "message": "Profile endpoint accessible",
-      "timestamp": "2025-08-30T09:47:33.248146",
+      "status": "warning",
+      "message": "Profile endpoint returned 500",
+      "timestamp": "2025-08-30T21:17:53.723470",
       "details": null
     },
     {
       "component": "Endpoint: /users/roles",
       "status": "pass",
       "message": "User roles endpoint accessible",
-      "timestamp": "2025-08-30T09:47:33.259540",
+      "timestamp": "2025-08-30T21:17:53.731763",
       "details": null
     },
     {
       "component": "AI Components",
       "status": "pass",
       "message": "AI modules import successfully",
-      "timestamp": "2025-08-30T09:47:33.259859",
+      "timestamp": "2025-08-30T21:17:53.732149",
       "details": null
     },
     {
       "component": "AI Analysis",
       "status": "pass",
       "message": "Message analysis working",
-      "timestamp": "2025-08-30T09:47:33.259979",
+      "timestamp": "2025-08-30T21:17:53.732301",
       "details": null
     },
     {
       "component": "Conversation Context",
       "status": "pass",
       "message": "Context management working",
-      "timestamp": "2025-08-30T09:47:33.260262",
+      "timestamp": "2025-08-30T21:17:53.732908",
       "details": null
     },
     {
       "component": "Security Components",
       "status": "pass",
       "message": "Security modules import successfully",
-      "timestamp": "2025-08-30T09:47:33.260311",
+      "timestamp": "2025-08-30T21:17:53.732980",
       "details": null
     },
     {
       "component": "Input Validation",
       "status": "pass",
       "message": "Input validation working",
-      "timestamp": "2025-08-30T09:47:33.261052",
+      "timestamp": "2025-08-30T21:17:53.733894",
       "details": null
     },
     {
       "component": "Rate Limiting",
       "status": "pass",
       "message": "Rate limiting working",
-      "timestamp": "2025-08-30T09:47:33.261116",
+      "timestamp": "2025-08-30T21:17:53.733995",
       "details": null
     },
     {
       "component": "User Management",
       "status": "pass",
       "message": "User management system working",
-      "timestamp": "2025-08-30T09:47:33.262015",
+      "timestamp": "2025-08-30T21:17:53.743381",
       "details": null
     },
     {
       "component": "User Storage",
       "status": "pass",
-      "message": "User storage accessible (5 users)",
-      "timestamp": "2025-08-30T09:47:33.262054",
+      "message": "User storage accessible (205 users)",
+      "timestamp": "2025-08-30T21:17:53.743435",
       "details": null
     },
     {
       "component": "System Analytics",
       "status": "pass",
-      "message": "System health score: 100.0",
-      "timestamp": "2025-08-30T09:47:34.395282",
+      "message": "System health score: 80.0",
+      "timestamp": "2025-08-30T21:17:54.927044",
+      "details": null
+    },
+    {
+      "component": "Multi-Model AI",
+      "status": "pass",
+      "message": "2 AI models configured",
+      "timestamp": "2025-08-30T21:17:54.927503",
+      "details": null
+    },
+    {
+      "component": "Adaptive Learning",
+      "status": "pass",
+      "message": "Adaptive learning system ready",
+      "timestamp": "2025-08-30T21:17:54.937568",
+      "details": null
+    },
+    {
+      "component": "Webhook System",
+      "status": "pass",
+      "message": "0 webhooks configured",
+      "timestamp": "2025-08-30T21:17:54.945185",
+      "details": null
+    },
+    {
+      "component": "Cache System",
+      "status": "pass",
+      "message": "Cache system ready",
+      "timestamp": "2025-08-30T21:17:54.954420",
       "details": null
     }
   ]

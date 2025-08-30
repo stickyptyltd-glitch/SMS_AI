@@ -39,7 +39,7 @@ class PersonalityProfile:
 class ConversationContextManager:
     """Manages conversation context and personality consistency"""
     
-    def __init__(self, data_dir: str = "dayle_data"):
+    def __init__(self, data_dir: str = "synapseflow_data"):
         self.data_dir = data_dir
         self.context_dir = os.path.join(data_dir, "conversations")
         self.personality_dir = os.path.join(data_dir, "personalities")

@@ -9,16 +9,21 @@ from ai.analysis import analyze as analyze_message
 from ai.generator import build_reply_prompt, postprocess_reply
 from ai.summary import summarize_memory
 from ai.conversation_context import get_context_manager, ConversationTurn
+from ai.multi_model_manager import get_multi_model_manager, ModelCapability
+from ai.adaptive_learning import get_adaptive_learning_system
 from analytics.system_monitor import get_system_monitor
 from utils.error_handling import (
     get_error_handler, handle_exceptions, validate_json_input,
     InputValidator, ValidationError, APIError, ErrorCategory, ErrorSeverity
 )
 from security.advanced_security import get_security_monitor, require_security_check
+from integrations.webhook_manager import get_webhook_manager, IntegrationType, MessagePlatform
+from performance.cache_manager import get_cache_manager, cache_result
 from typing import List, Dict, Any
 from functools import wraps
 import random
 import time
+import asyncio
 from user_management import get_user_manager, require_permission, require_user_auth
 try:
     from licensing.license_manager import get_license_manager, LicenseError
@@ -42,7 +47,7 @@ DISABLE_LLM = os.environ.get("OLLAMA_DISABLE", "0") in ("1", "true", "yes")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 USE_OPENAI = os.environ.get("USE_OPENAI", "0") in ("1", "true", "yes")
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")
-DATA_DIR = "dayle_data"
+DATA_DIR = "synapseflow_data"
 PROFILE_FILE = os.path.join(DATA_DIR, "profile.json")
 FEEDBACK_FILE = os.path.join(DATA_DIR, "feedback.jsonl")
 POLICY_FILE = os.path.join(DATA_DIR, "policy.json")
@@ -579,17 +584,42 @@ def generate_reply_with_context(context_prompt: str, incoming: str, contact: str
     profile = load_profile()
 
     # Use context-aware prompt
-    opts = {"temperature": 0.4, "top_p": 0.9, "num_predict": 150}
+    opts = {"temperature": 0.4, "top_p": 0.9, "max_tokens": 150}
 
     try:
-        if USE_OPENAI and OPENAI_API_KEY:
-            draft = call_llm(context_prompt, options=opts)
-        else:
-            # Fallback to standard generation
-            return generate_reply(incoming, contact, analysis)
+        # Try multi-model system first
+        multi_model_manager = get_multi_model_manager()
+
+        # Use async call in sync context
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            response = loop.run_until_complete(
+                multi_model_manager.generate_response(
+                    context_prompt,
+                    ModelCapability.CONVERSATION,
+                    opts
+                )
+            )
+            if response:
+                draft = response.content
+            else:
+                # Fallback to standard generation
+                return generate_reply(incoming, contact, analysis)
+        finally:
+            loop.close()
+
     except Exception as e:
-        print(f"Context-aware LLM call failed: {e}")
-        return generate_reply(incoming, contact, analysis)
+        print(f"Multi-model LLM call failed: {e}")
+        try:
+            if USE_OPENAI and OPENAI_API_KEY:
+                draft = call_llm(context_prompt, options=opts)
+            else:
+                # Fallback to standard generation
+                return generate_reply(incoming, contact, analysis)
+        except Exception as e2:
+            print(f"Fallback LLM call failed: {e2}")
+            return generate_reply(incoming, contact, analysis)
 
     # Post-process with personality considerations
     if personality:
@@ -904,8 +934,8 @@ def privacy():
         else:
             html = """
 <!doctype html>
-<html><head><meta charset='utf-8'><title>Privacy Policy — DayleSMS AI</title></head>
-<body><h1>Privacy Policy — DayleSMS AI</h1>
+<html><head><meta charset='utf-8'><title>Privacy Policy — SynapseFlow AI</title></head>
+<body><h1>Privacy Policy — SynapseFlow AI</h1>
 <p>We process message content to generate auto‑replies and maintain lightweight memory on your server. We do not sell data. Optional integrations (Twilio/Messenger) are used only if configured by you. License data is encrypted on disk. You can purge stored memory per contact at any time.</p>
 <p>Contact: support@st1cky.pty.ltd</p>
 </body></html>
@@ -927,10 +957,10 @@ def admin():
     html = """
 <!doctype html>
 <html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>DayleSMS Admin</title>
+<title>SynapseFlow AI Admin</title>
 <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:16px;line-height:1.4}section{border:1px solid #ddd;padding:12px;margin:12px 0;border-radius:6px}input,textarea{width:100%;margin:4px 0;padding:6px}button{margin:4px 0;padding:6px 10px}.banner{background:#f4f8ff;border:1px solid #cfe0ff;padding:8px;border-radius:6px;margin:12px 0}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}</style>
 </head><body>
-<h1>DayleSMS Admin</h1>
+<h1>SynapseFlow AI Admin</h1>
 
 <div class='banner'>
   <strong>Rate limit:</strong> __RL_CAP__/min
@@ -1180,10 +1210,10 @@ def client_page():
     html = """
 <!doctype html>
 <html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>DayleSMS Test Client</title>
+<title>SynapseFlow AI Platform</title>
 <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:16px;line-height:1.4}input,textarea,select{width:100%;padding:8px;margin:4px 0}button{padding:8px 12px;margin:4px 0}</style>
 </head><body>
-<h1>DayleSMS Test Client</h1>
+<h1>SynapseFlow AI Platform</h1>
 <section style='border:1px solid #ddd;padding:12px;border-radius:6px'>
   <h2>Reply</h2>
   <input id='contact' placeholder='Contact (e.g., Tester)'>
@@ -1546,6 +1576,340 @@ def get_personality(name):
             return jsonify({"error": "Personality not found"}), 404
     except Exception as e:
         return jsonify({"error": f"Failed to get personality: {e}"}), 500
+
+# --- Multi-Model AI Endpoints ---
+@app.get("/ai/models")
+@require_permission("admin")
+def get_available_models():
+    """Get available AI models and their performance"""
+    try:
+        multi_model_manager = get_multi_model_manager()
+        performance_report = multi_model_manager.get_model_performance_report()
+
+        models_info = {}
+        for model_key, model_config in multi_model_manager.models.items():
+            models_info[model_key] = {
+                "provider": model_config.provider.value,
+                "model_name": model_config.model_name,
+                "capabilities": [cap.value for cap in model_config.capabilities],
+                "max_tokens": model_config.max_tokens,
+                "cost_per_token": model_config.cost_per_token,
+                "reliability_score": model_config.reliability_score,
+                "priority": model_config.priority,
+                "performance": performance_report.get(model_key, {})
+            }
+
+        return jsonify({
+            "models": models_info,
+            "total_models": len(models_info)
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to get models: {e}"}), 500
+
+@app.post("/ai/generate")
+@require_permission("reply")
+@validate_json_input(required_fields=['prompt'], optional_fields=['capability', 'options'])
+async def generate_ai_response():
+    """Generate response using multi-model AI system"""
+    try:
+        data = request.json
+        prompt = data['prompt']
+        capability = ModelCapability(data.get('capability', 'text_generation'))
+        options = data.get('options', {})
+
+        multi_model_manager = get_multi_model_manager()
+        response = await multi_model_manager.generate_response(prompt, capability, options)
+
+        if response:
+            return jsonify({
+                "success": True,
+                "response": response.content,
+                "provider": response.provider.value,
+                "model": response.model_name,
+                "tokens_used": response.tokens_used,
+                "cost": response.cost,
+                "confidence": response.confidence
+            })
+        else:
+            return jsonify({"error": "No suitable model available"}), 503
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to generate response: {e}"}), 500
+
+# --- Adaptive Learning Endpoints ---
+@app.post("/learning/feedback")
+@require_user_auth
+@validate_json_input(required_fields=['input_text', 'response_text'],
+                    optional_fields=['feedback_score', 'contact', 'success_metrics'])
+def submit_learning_feedback():
+    """Submit feedback for adaptive learning"""
+    try:
+        data = request.json
+        learning_system = get_adaptive_learning_system()
+
+        learning_system.add_learning_example(
+            input_text=data['input_text'],
+            response_text=data['response_text'],
+            user_feedback=data.get('feedback_score'),
+            contact=data.get('contact', 'Unknown'),
+            success_metrics=data.get('success_metrics', {})
+        )
+
+        return jsonify({"ok": True, "message": "Feedback recorded"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to record feedback: {e}"}), 500
+
+@app.get("/learning/stats")
+@require_permission("admin")
+def get_learning_stats():
+    """Get adaptive learning statistics"""
+    try:
+        learning_system = get_adaptive_learning_system()
+        stats = learning_system.get_learning_stats()
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get learning stats: {e}"}), 500
+
+@app.get("/learning/suggestion")
+@require_user_auth
+def get_response_suggestion():
+    """Get AI response suggestion based on learned patterns"""
+    try:
+        input_text = request.args.get('input_text', '')
+        contact = request.args.get('contact', 'Unknown')
+
+        if not input_text:
+            return jsonify({"error": "input_text parameter required"}), 400
+
+        learning_system = get_adaptive_learning_system()
+        suggestion = learning_system.get_response_suggestion(input_text, contact=contact)
+
+        return jsonify({
+            "suggestion": suggestion,
+            "has_suggestion": suggestion is not None
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to get suggestion: {e}"}), 500
+
+# --- Webhook Integration Endpoints ---
+@app.post("/webhooks/register")
+@require_permission("admin")
+@validate_json_input(required_fields=['name', 'platform', 'endpoint_url'],
+                    optional_fields=['secret_key', 'headers', 'retry_attempts'])
+def register_webhook():
+    """Register a new webhook integration"""
+    try:
+        data = request.json
+        webhook_manager = get_webhook_manager()
+
+        webhook_id = webhook_manager.register_webhook(
+            name=data['name'],
+            integration_type=IntegrationType.WEBHOOK_INCOMING,
+            platform=MessagePlatform(data['platform']),
+            endpoint_url=data['endpoint_url'],
+            secret_key=data.get('secret_key'),
+            headers=data.get('headers', {}),
+            retry_attempts=data.get('retry_attempts', 3)
+        )
+
+        return jsonify({
+            "ok": True,
+            "webhook_id": webhook_id,
+            "message": "Webhook registered successfully"
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to register webhook: {e}"}), 500
+
+@app.post("/webhooks/<webhook_id>/process")
+@require_security_check(check_rate_limit=True, limit_type='webhook')
+async def process_webhook(webhook_id):
+    """Process incoming webhook"""
+    try:
+        webhook_manager = get_webhook_manager()
+        payload = request.json or {}
+        headers = dict(request.headers)
+        source_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+
+        response = await webhook_manager.process_incoming_webhook(
+            webhook_id, payload, headers, source_ip
+        )
+
+        return jsonify(response.response_data), response.status_code
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to process webhook: {e}"}), 500
+
+@app.get("/webhooks/stats")
+@require_permission("admin")
+def get_webhook_stats():
+    """Get webhook statistics"""
+    try:
+        webhook_manager = get_webhook_manager()
+        webhook_id = request.args.get('webhook_id')
+        stats = webhook_manager.get_webhook_stats(webhook_id)
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get webhook stats: {e}"}), 500
+
+# --- Performance and Caching Endpoints ---
+@app.get("/cache/stats")
+@require_permission("admin")
+def get_cache_stats():
+    """Get cache performance statistics"""
+    try:
+        cache_manager = get_cache_manager()
+        namespace = request.args.get('namespace')
+        stats = cache_manager.get_performance_stats(namespace)
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get cache stats: {e}"}), 500
+
+@app.post("/cache/clear")
+@require_permission("admin")
+@validate_json_input(optional_fields=['namespace'])
+def clear_cache():
+    """Clear cache entries"""
+    try:
+        data = request.json or {}
+        cache_manager = get_cache_manager()
+        namespace = data.get('namespace')
+
+        if namespace:
+            cache_manager.clear_namespace(namespace)
+            message = f"Cleared cache for namespace: {namespace}"
+        else:
+            # Clear all caches
+            cache_manager.memory_cache.clear()
+            message = "Cleared all cache entries"
+
+        return jsonify({"ok": True, "message": message})
+    except Exception as e:
+        return jsonify({"error": f"Failed to clear cache: {e}"}), 500
+
+# --- Advanced Analytics Endpoints ---
+@app.get("/analytics/predictive")
+@require_permission("admin")
+def get_predictive_analytics():
+    """Get predictive analytics and forecasting"""
+    try:
+        system_monitor = get_system_monitor()
+        analytics = system_monitor.get_predictive_analytics()
+        return jsonify(analytics)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get predictive analytics: {e}"}), 500
+
+@app.get("/analytics/advanced")
+@require_permission("admin")
+def get_advanced_analytics():
+    """Get advanced usage analytics"""
+    try:
+        days = request.args.get('days', 7, type=int)
+        system_monitor = get_system_monitor()
+        analytics = system_monitor.get_advanced_usage_analytics(days)
+        return jsonify(analytics)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get advanced analytics: {e}"}), 500
+
+# --- Enhanced Security Endpoints ---
+@app.get("/security/advanced")
+@require_permission("admin")
+def get_advanced_security_analytics():
+    """Get advanced security analytics"""
+    try:
+        security_monitor = get_security_monitor()
+        analytics = security_monitor.get_advanced_security_analytics()
+        return jsonify(analytics)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get security analytics: {e}"}), 500
+
+# --- Enhanced User Management Endpoints ---
+@app.get("/users/analytics")
+@require_permission("admin")
+def get_user_analytics():
+    """Get comprehensive user analytics"""
+    try:
+        user_manager = get_user_manager()
+        analytics = user_manager.get_user_analytics()
+        return jsonify(analytics)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get user analytics: {e}"}), 500
+
+@app.get("/users/activity")
+@require_permission("admin")
+def get_user_activity_report():
+    """Get user activity report"""
+    try:
+        user_id = request.args.get('user_id')
+        days = request.args.get('days', 30, type=int)
+
+        user_manager = get_user_manager()
+        report = user_manager.get_user_activity_report(user_id, days)
+        return jsonify(report)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get activity report: {e}"}), 500
+
+@app.get("/users/audit")
+@require_permission("admin")
+def get_security_audit_log():
+    """Get security audit log"""
+    try:
+        days = request.args.get('days', 7, type=int)
+        user_manager = get_user_manager()
+        audit_log = user_manager.get_security_audit_log(days)
+        return jsonify(audit_log)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get audit log: {e}"}), 500
+
+# --- Learning System Endpoints ---
+@app.get("/learning/recommendations")
+@require_user_auth
+def get_personalized_recommendations():
+    """Get personalized response recommendations"""
+    try:
+        contact = request.args.get('contact', 'Unknown')
+        input_text = request.args.get('input_text', '')
+
+        learning_system = get_adaptive_learning_system()
+        recommendations = learning_system.get_personalized_recommendations(contact, input_text)
+        return jsonify(recommendations)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get recommendations: {e}"}), 500
+
+# --- Cache Analytics Endpoints ---
+@app.get("/cache/analytics")
+@require_permission("admin")
+def get_cache_analytics():
+    """Get detailed cache analytics"""
+    try:
+        hours = request.args.get('hours', 24, type=int)
+        cache_manager = get_cache_manager()
+        analytics = cache_manager.get_cache_analytics(hours)
+        return jsonify(analytics)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get cache analytics: {e}"}), 500
+
+@app.get("/cache/recommendations")
+@require_permission("admin")
+def get_cache_recommendations():
+    """Get cache optimization recommendations"""
+    try:
+        cache_manager = get_cache_manager()
+        recommendations = cache_manager.get_cache_recommendations()
+        return jsonify(recommendations)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get cache recommendations: {e}"}), 500
+
+# --- Webhook Health Endpoints ---
+@app.get("/webhooks/health")
+@require_permission("admin")
+def get_webhook_health():
+    """Get webhook health report"""
+    try:
+        webhook_manager = get_webhook_manager()
+        health_report = webhook_manager.get_webhook_health_report()
+        return jsonify(health_report)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get webhook health: {e}"}), 500
 
 @app.get("/users/login-ui")
 def user_login_ui():
