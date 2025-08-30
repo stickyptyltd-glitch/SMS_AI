@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Remove restricted SMS permissions for Play store flavor -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" tools:node="remove"/>
+    <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove"/>
+    <uses-permission android:name="android.permission.READ_SMS" tools:node="remove"/>
+
+    <application>
+        <!-- Remove SMS components in store flavor -->
+        <service android:name=".sms.SmsReceiverService" tools:node="remove"/>
+        <receiver android:name=".sms.IncomingSmsReceiver" tools:node="remove"/>
+    </application>
+
+</manifest>
+

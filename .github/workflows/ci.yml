@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, "dev/**" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements-test-client.txt
+      - name: Run tests
+        env:
+          # Disable license enforcement in CI to avoid requiring a key
+          LICENSE_ENFORCE: "0"
+        run: |
+          source .venv/bin/activate
+          pytest -q

@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Dayle SMS Auto-Reply"
+        android:textSize="22sp"
+        android:textStyle="bold"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Grant permissions, set server IP, and start listener."/>
+
+    <EditText
+        android:id="@+id/serverIp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Flask server base URL e.g. http://192.168.1.50:8081"
+        android:inputType="textUri"/>
+
+    <CheckBox
+        android:id="@+id/autoSendHighConfidence"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Auto-send ≥ 0.8 confidence"/>
+
+    <CheckBox
+        android:id="@+id/blockNegAutoSend"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Block auto-send on negative sentiment"/>
+
+    <Button
+        android:id="@+id/btnStart"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Overlay Service"/>
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Status: idle"
+        android:paddingTop="8dp"/>
+
+    <Button
+        android:id="@+id/btnLicense"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="License & Activation"
+        android:layout_marginTop="6dp"/>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#DDDDDD"
+        android:layout_marginTop="12dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Memory Tools"
+        android:textStyle="bold"
+        android:paddingTop="8dp"/>
+
+    <EditText
+        android:id="@+id/contactName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Contact name for memory ops"
+        android:inputType="textPersonName"/>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="6dp">
+
+        <Button
+            android:id="@+id/btnShowSummary"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Show Summary"/>
+
+        <Button
+            android:id="@+id/btnPurgeMemory"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Purge Memory"
+            android:layout_marginStart="8dp"/>
+    
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="6dp">
+
+        <Button
+            android:id="@+id/btnAddAlwaysAutoSend"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Add to Always Auto-Send"/>
+
+        <Button
+            android:id="@+id/btnRemoveAlwaysAutoSend"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Remove from Always"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/alwaysList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Always Auto-Send: (none)"
+        android:textColor="#333333"
+        android:paddingTop="6dp"/>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#DDDDDD"
+        android:layout_marginTop="12dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Export / Import Settings"
+        android:textStyle="bold"
+        android:paddingTop="8dp"/>
+
+    <EditText
+        android:id="@+id/settingsFile"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Filename (e.g., settings.json)"
+        android:inputType="text"/>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="6dp">
+
+        <Button
+            android:id="@+id/btnExportSettings"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Export"/>
+
+        <Button
+            android:id="@+id/btnImportSettings"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Import"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
+
+</LinearLayout>
+
+    <TextView
+        android:id="@+id/memSummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#333333"
+        android:paddingTop="6dp"/>
+
+    <TextView
+        android:id="@+id/neverList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Never Auto-Send: (none)"
+        android:textColor="#333333"
+        android:paddingTop="6dp"/>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="6dp">
+        
+        <Button
+            android:id="@+id/btnAddNeverAutoSend"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Add to Never Auto-Send"/>
+
+        <Button
+            android:id="@+id/btnRemoveNeverAutoSend"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Remove from Never"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#DDDDDD"
+        android:layout_marginTop="12dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Test Reply"
+        android:textStyle="bold"
+        android:paddingTop="8dp"/>
+
+    <EditText
+        android:id="@+id/testContact"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Contact name for test"
+        android:inputType="textPersonName"/>
+
+    <EditText
+        android:id="@+id/testIncoming"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Incoming text to test"
+        android:inputType="textMultiLine"/>
+
+    <Button
+        android:id="@+id/btnTestReply"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Run /reply Test"/>
+
+    <TextView
+        android:id="@+id/testResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#333333"
+        android:paddingTop="6dp"/>
+</LinearLayout>

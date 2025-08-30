@@ -1,0 +1,13 @@
+requests>=2.31
+# Optional, for webhook mode
+flask>=3.0
+# Optional, for Twilio SMS send
+twilio>=9.0
+# Optional, for Messenger webhook/send
+itsdangerous>=2.2
+# Production WSGI server for webhooks
+gunicorn>=21.2
+# Licensing and anti-tamper crypto primitives
+cryptography>=42.0.0
+# Testing framework
+pytest>=7.0

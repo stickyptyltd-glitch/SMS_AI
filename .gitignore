@@ -1,0 +1,21 @@
+# Secrets & local state
+licensing/issuer_secret.key
+.dayle_license
+.venv/
+__pycache__/
+*.pyc
+
+# User data and runtime files (contains sensitive info)
+dayle_data/
+*.jsonl
+
+# Environment files (contain API keys)
+.env
+
+# Android build outputs
+**/build/
+*.apk
+
+# OS files
+.DS_Store
+Thumbs.db

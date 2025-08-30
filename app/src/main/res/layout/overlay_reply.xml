@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="12dp"
+    android:background="#DD000000">
+
+    <TextView
+        android:id="@+id/overlayContact"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Contact"
+        android:textColor="@android:color/white"
+        android:textStyle="bold"
+        android:textSize="16sp"/>
+
+    <TextView
+        android:id="@+id/overlayIncoming"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Incoming..."
+        android:textColor="@android:color/white"
+        android:paddingTop="4dp"/>
+
+    <TextView
+        android:id="@+id/overlaySummary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#222222"
+        android:textSize="12sp"
+        android:paddingTop="6dp"
+        android:padding="6dp"
+        android:background="@drawable/summary_pill_bg"/>
+
+    <EditText
+        android:id="@+id/overlayReply"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minLines="2"
+        android:maxLines="6"
+        android:textColor="@android:color/white"
+        android:hint="Reply..."
+        android:background="@android:color/transparent"/>
+
+    <LinearLayout
+        android:id="@+id/tagRow"
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="6dp">
+
+        <CheckBox
+            android:id="@+id/tagHelpful"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Helpful"
+            android:textColor="@android:color/white"/>
+
+        <CheckBox
+            android:id="@+id/tagTone"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Needs Tone"
+            android:layout_marginStart="12dp"
+            android:textColor="@android:color/white"/>
+
+        <CheckBox
+            android:id="@+id/tagSharp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Too Sharp"
+            android:layout_marginStart="12dp"
+            android:textColor="@android:color/white"/>
+    </LinearLayout>
+    <LinearLayout
+        android:id="@+id/goalRow"
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="4dp">
+
+        <CheckBox
+            android:id="@+id/tagGoalMet"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Goal Met"
+            android:textColor="@android:color/white"/>
+
+        <CheckBox
+            android:id="@+id/tagProposedTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Proposed Time"
+            android:layout_marginStart="12dp"
+            android:textColor="@android:color/white"/>
+
+        <CheckBox
+            android:id="@+id/tagMovedToCall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Moved to Call"
+            android:layout_marginStart="12dp"
+            android:textColor="@android:color/white"/>
+
+        <CheckBox
+            android:id="@+id/tagAskedClarify"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Asked Clarify"
+            android:layout_marginStart="12dp"
+            android:textColor="@android:color/white"/>
+    </LinearLayout>
+
+    <CheckBox
+        android:id="@+id/chkNeverThis"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Never auto-send to this contact"
+        android:textColor="@android:color/white"
+        android:paddingTop="4dp"/>
+
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:paddingTop="8dp">
+
+        <Button
+            android:id="@+id/btnReject"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Reject"/>
+
+        <Button
+            android:id="@+id/btnSend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Send"
+            android:layout_marginStart="8dp"/>
+    </LinearLayout>
+</LinearLayout>

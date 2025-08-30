@@ -1,0 +1,147 @@
+name: Android AAB Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: "Product flavor to build (store or full)"
+        required: true
+        default: "store"
+      publish:
+        description: "Publish to Google Play (requires GPLAY_SERVICE_ACCOUNT_JSON secret)"
+        required: true
+        default: "false"
+      track:
+        description: "Play track (internal, alpha, beta, production)"
+        required: true
+        default: "internal"
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      
+      - name: Install Build Tools and Platforms
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Prepare signing from secrets (optional)
+        if: ${{ secrets.STORE_FILE_BASE64 != '' }}
+        run: |
+          echo "Setting up signing keystore from secrets"
+          echo "$STORE_FILE_BASE64" | base64 -d > $GITHUB_WORKSPACE/dayle-keystore.jks
+        env:
+          STORE_FILE_BASE64: ${{ secrets.STORE_FILE_BASE64 }}
+
+      - name: Generate upload keystore (fallback)
+        if: ${{ secrets.STORE_FILE_BASE64 == '' }}
+        run: |
+          echo "No signing secrets provided; generating an upload keystore. Save it for future releases."
+          PASS=$(openssl rand -base64 18)
+          echo "Generated password (store/key): $PASS" > upload-key-credentials.txt
+          keytool -genkeypair -v -keystore $GITHUB_WORKSPACE/dayle-keystore.jks \
+            -storepass "$PASS" -keypass "$PASS" -alias upload \
+            -keyalg RSA -keysize 4096 -validity 3650 \
+            -dname "CN=Dayle, OU=Apps, O=st1cky.pty.ltd, L=, S=, C=AU"
+          echo "ALIAS=upload" >> upload-key-credentials.txt
+          echo "STORE_FILE=dayle-keystore.jks" >> upload-key-credentials.txt
+          echo "STORE_PASSWORD=$PASS" >> upload-key-credentials.txt
+          echo "KEY_PASSWORD=$PASS" >> upload-key-credentials.txt
+          echo "Keystore generated: $GITHUB_WORKSPACE/dayle-keystore.jks"
+
+      - name: Build AAB (storeRelease)
+        if: ${{ inputs.flavor == 'store' }}
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: 8.7
+          arguments: bundleStoreRelease --stacktrace
+
+      - name: Build AAB (fullRelease)
+        if: ${{ inputs.flavor == 'full' }}
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: 8.7
+          arguments: bundleFullRelease --stacktrace
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aab-${{ inputs.flavor }}-release
+          path: app/build/outputs/bundle/${{ inputs.flavor }}Release/*.aab
+
+      - name: Sign AAB with jarsigner
+        run: |
+          AAB=$(ls app/build/outputs/bundle/${{ inputs.flavor }}Release/*.aab | head -n1)
+          if [ -z "$AAB" ]; then echo "No AAB found"; exit 1; fi
+          # Determine credentials (from secrets or generated fallback)
+          if [ -n "${{ secrets.STORE_PASSWORD }}" ]; then
+            STORE_PASS='${{ secrets.STORE_PASSWORD }}'
+            KEY_PASS='${{ secrets.KEY_PASSWORD }}'
+            ALIAS='${{ secrets.KEY_ALIAS }}'
+          else
+            # Extract from fallback file
+            STORE_PASS=$(grep STORE_PASSWORD upload-key-credentials.txt | cut -d= -f2)
+            KEY_PASS=$(grep KEY_PASSWORD upload-key-credentials.txt | cut -d= -f2)
+            ALIAS=$(grep ALIAS upload-key-credentials.txt | cut -d= -f2)
+          fi
+          echo "Signing $AAB with alias $ALIAS"
+          jarsigner -keystore $GITHUB_WORKSPACE/dayle-keystore.jks -storepass "$STORE_PASS" -keypass "$KEY_PASS" "$AAB" "$ALIAS"
+          jarsigner -verify -verbose -certs "$AAB"
+
+      - name: Upload signed AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: aab-${{ inputs.flavor }}-release-signed
+          path: app/build/outputs/bundle/${{ inputs.flavor }}Release/*.aab
+
+      - name: Upload generated keystore (fallback only)
+        if: ${{ secrets.STORE_FILE_BASE64 == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: upload-keystore-and-credentials
+          path: |
+            dayle-keystore.jks
+            upload-key-credentials.txt
+
+      - name: Write Play Service Account JSON
+        if: ${{ inputs.publish == 'true' && secrets.GPLAY_SERVICE_ACCOUNT_JSON != '' }}
+        run: |
+          echo "$GPLAY_JSON" > $GITHUB_WORKSPACE/gplay.json
+        env:
+          GPLAY_JSON: ${{ secrets.GPLAY_SERVICE_ACCOUNT_JSON }}
+
+      - name: Publish to Google Play (storeRelease)
+        if: ${{ inputs.publish == 'true' && inputs.flavor == 'store' && secrets.GPLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: 8.7
+          arguments: >-
+            publishStoreReleaseBundle
+            -Pplay.serviceAccountCredentials=$GITHUB_WORKSPACE/gplay.json
+            -Pplay.track=${{ inputs.track }}
+            -Pplay.resolutionStrategy=auto
+
+      - name: Publish to Google Play (fullRelease)
+        if: ${{ inputs.publish == 'true' && inputs.flavor == 'full' && secrets.GPLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: 8.7
+          arguments: >-
+            publishFullReleaseBundle
+            -Pplay.serviceAccountCredentials=$GITHUB_WORKSPACE/gplay.json
+            -Pplay.track=${{ inputs.track }}
+            -Pplay.resolutionStrategy=auto
