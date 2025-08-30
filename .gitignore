@@ -15,7 +15,13 @@ dayle_data/
 # Android build outputs
 **/build/
 *.apk
+.gradle/
+local.properties
 
 # OS files
 .DS_Store
 Thumbs.db
+
+# Temporary files
+*.tmp
+*.log

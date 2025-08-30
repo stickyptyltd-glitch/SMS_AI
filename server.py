@@ -1,11 +1,20 @@
 import os
 import json
+import re
+import ipaddress
 from flask import Flask, request, jsonify
 from flask import Response
 import requests
 from ai.analysis import analyze as analyze_message
 from ai.generator import build_reply_prompt, postprocess_reply
 from ai.summary import summarize_memory
+from ai.conversation_context import get_context_manager, ConversationTurn
+from analytics.system_monitor import get_system_monitor
+from utils.error_handling import (
+    get_error_handler, handle_exceptions, validate_json_input,
+    InputValidator, ValidationError, APIError, ErrorCategory, ErrorSeverity
+)
+from security.advanced_security import get_security_monitor, require_security_check
 from typing import List, Dict, Any
 from functools import wraps
 import random
@@ -564,6 +573,58 @@ def reply():
     variant = chosen or random.choice(["A", "B"])  # variant used
     _observe_reply_latency(time.time() - start)
     return jsonify({"draft": draft, "analysis": analysis, "goal": goal, "variant": variant})
+
+def generate_reply_with_context(context_prompt: str, incoming: str, contact: str, analysis: Dict, personality) -> tuple:
+    """Generate reply using conversation context and personality"""
+    profile = load_profile()
+
+    # Use context-aware prompt
+    opts = {"temperature": 0.4, "top_p": 0.9, "num_predict": 150}
+
+    try:
+        if USE_OPENAI and OPENAI_API_KEY:
+            draft = call_llm(context_prompt, options=opts)
+        else:
+            # Fallback to standard generation
+            return generate_reply(incoming, contact, analysis)
+    except Exception as e:
+        print(f"Context-aware LLM call failed: {e}")
+        return generate_reply(incoming, contact, analysis)
+
+    # Post-process with personality considerations
+    if personality:
+        draft = apply_personality_style(draft, personality)
+
+    draft = postprocess_reply(draft, profile)
+
+    return draft, analysis
+
+def apply_personality_style(draft: str, personality) -> str:
+    """Apply personality-specific styling to response"""
+    # Adjust emoji usage
+    if personality.emoji_usage == "none":
+        draft = re.sub(r'[😀-🿿]', '', draft)  # Remove emojis
+    elif personality.emoji_usage == "frequent" and not re.search(r'[😀-🿿]', draft):
+        # Add appropriate emoji if none present
+        if "great" in draft.lower() or "awesome" in draft.lower():
+            draft += " 😊"
+        elif "sorry" in draft.lower():
+            draft += " 😔"
+
+    # Adjust response length
+    if personality.response_length_preference == "brief" and len(draft) > 100:
+        # Truncate while preserving meaning
+        sentences = draft.split('.')
+        if len(sentences) > 1:
+            draft = sentences[0] + '.'
+    elif personality.response_length_preference == "detailed" and len(draft) < 50:
+        # Add more context (simple approach)
+        if "yes" in draft.lower():
+            draft = draft.replace("Yes", "Yes, absolutely")
+        elif "no" in draft.lower():
+            draft = draft.replace("No", "No, unfortunately")
+
+    return draft
 
 @app.post("/feedback")
 @require_permission("feedback")
@@ -1328,6 +1389,163 @@ def get_roles():
     """Get available roles and permissions"""
     from user_management import ROLES
     return jsonify({"roles": ROLES})
+
+# --- Advanced Analytics Endpoints ---
+@app.get("/analytics/system-health")
+@require_permission("admin")
+def get_system_health():
+    """Get comprehensive system health status"""
+    try:
+        system_monitor = get_system_monitor()
+        health_data = system_monitor.get_system_health()
+        return jsonify(health_data)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get system health: {e}"}), 500
+
+@app.get("/analytics/usage")
+@require_permission("admin")
+def get_usage_analytics():
+    """Get usage analytics"""
+    try:
+        days = int(request.args.get('days', 7))
+        system_monitor = get_system_monitor()
+        usage_data = system_monitor.get_usage_analytics(days)
+        return jsonify(usage_data)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get usage analytics: {e}"}), 500
+
+@app.post("/analytics/start-monitoring")
+@require_permission("admin")
+def start_system_monitoring():
+    """Start system monitoring"""
+    try:
+        interval = int(request.json.get('interval', 60))
+        system_monitor = get_system_monitor()
+        system_monitor.start_monitoring(interval)
+        return jsonify({"ok": True, "message": f"Monitoring started with {interval}s interval"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to start monitoring: {e}"}), 500
+
+@app.post("/analytics/stop-monitoring")
+@require_permission("admin")
+def stop_system_monitoring():
+    """Stop system monitoring"""
+    try:
+        system_monitor = get_system_monitor()
+        system_monitor.stop_monitoring()
+        return jsonify({"ok": True, "message": "Monitoring stopped"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to stop monitoring: {e}"}), 500
+
+# --- Security Endpoints ---
+@app.get("/security/summary")
+@require_permission("admin")
+def get_security_summary():
+    """Get security summary and threat analysis"""
+    try:
+        security_monitor = get_security_monitor()
+        summary = security_monitor.get_security_summary()
+        return jsonify(summary)
+    except Exception as e:
+        return jsonify({"error": f"Failed to get security summary: {e}"}), 500
+
+@app.post("/security/block-ip")
+@require_permission("admin")
+@validate_json_input(required_fields=['ip'], optional_fields=['duration', 'reason'])
+def block_ip():
+    """Block an IP address"""
+    try:
+        data = request.json
+        ip = data['ip']
+        duration = data.get('duration', 3600)  # 1 hour default
+        reason = data.get('reason', 'Manual block')
+
+        # Validate IP format
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
+            return jsonify({"error": "Invalid IP address format"}), 400
+
+        security_monitor = get_security_monitor()
+        security_monitor.rate_limiter.block_ip(ip, duration)
+
+        return jsonify({
+            "ok": True,
+            "message": f"IP {ip} blocked for {duration} seconds",
+            "reason": reason
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to block IP: {e}"}), 500
+
+# --- Conversation Context Endpoints ---
+@app.get("/conversation/<contact>/summary")
+@require_user_auth
+def get_conversation_summary(contact):
+    """Get conversation summary for a contact"""
+    try:
+        context_manager = get_context_manager()
+        summary = context_manager.get_conversation_summary(contact)
+        return jsonify({"contact": contact, "summary": summary})
+    except Exception as e:
+        return jsonify({"error": f"Failed to get conversation summary: {e}"}), 500
+
+@app.get("/conversation/<contact>/analytics")
+@require_user_auth
+def get_conversation_analytics(contact):
+    """Get conversation analytics for a contact"""
+    try:
+        context_manager = get_context_manager()
+        analytics = context_manager.analyze_conversation_patterns(contact)
+        return jsonify({"contact": contact, "analytics": analytics})
+    except Exception as e:
+        return jsonify({"error": f"Failed to get conversation analytics: {e}"}), 500
+
+@app.post("/personality")
+@require_permission("profile_write")
+@validate_json_input(required_fields=['name'], optional_fields=[
+    'base_traits', 'communication_style', 'response_length_preference',
+    'emoji_usage', 'topics_of_interest', 'topics_to_avoid', 'custom_phrases'
+])
+def create_personality():
+    """Create or update personality profile"""
+    try:
+        from ai.conversation_context import PersonalityProfile
+
+        data = request.json
+        personality = PersonalityProfile(
+            name=data['name'],
+            base_traits=data.get('base_traits', ['helpful', 'friendly']),
+            communication_style=data.get('communication_style', 'casual'),
+            response_length_preference=data.get('response_length_preference', 'brief'),
+            emoji_usage=data.get('emoji_usage', 'minimal'),
+            topics_of_interest=data.get('topics_of_interest', []),
+            topics_to_avoid=data.get('topics_to_avoid', []),
+            custom_phrases=data.get('custom_phrases', []),
+            relationship_context=data.get('relationship_context', {})
+        )
+
+        context_manager = get_context_manager()
+        context_manager.save_personality(personality)
+
+        return jsonify({"ok": True, "personality": data['name']})
+    except Exception as e:
+        return jsonify({"error": f"Failed to create personality: {e}"}), 500
+
+@app.get("/personality/<name>")
+@require_user_auth
+def get_personality(name):
+    """Get personality profile"""
+    try:
+        context_manager = get_context_manager()
+        personality = context_manager.load_personality(name)
+
+        if personality:
+            from dataclasses import asdict
+            return jsonify({"personality": asdict(personality)})
+        else:
+            return jsonify({"error": "Personality not found"}), 404
+    except Exception as e:
+        return jsonify({"error": f"Failed to get personality: {e}"}), 500
 
 @app.get("/users/login-ui")
 def user_login_ui():
