@@ -390,7 +390,7 @@ class WebhookManager:
             
             return response
             
-        except Exception as e:
+        except aiohttp.ClientError as e:
             response_time = time.time() - start_time
             error_response = IntegrationResponse(
                 success=False,
@@ -402,8 +402,32 @@ class WebhookManager:
             
             self._log_integration_result(webhook_id, "error", error_response)
             return error_response
+        except json.JSONDecodeError as e:
+            response_time = time.time() - start_time
+            error_response = IntegrationResponse(
+                success=False,
+                status_code=400,
+                response_data={"error": "Invalid JSON payload"},
+                response_time=response_time,
+                error_message="Invalid JSON payload"
+            )
+            
+            self._log_integration_result(webhook_id, "error", error_response)
+            return error_response
+        except Exception as e:
+            response_time = time.time() - start_time
+            error_response = IntegrationResponse(
+                success=False,
+                status_code=500,
+                response_data={"error": "Internal server error"},
+                response_time=response_time,
+                error_message=str(e)
+            )
+            
+            self._log_integration_result(webhook_id, "error", error_response)
+            return error_response
     
-    async def _handle_twilio_message(self, webhook: WebhookConfig, 
+    async def _handle_twilio_message(self, webhook: WebhookConfig,
                                    event: WebhookEvent) -> IntegrationResponse:
         """Handle Twilio SMS webhook"""
         payload = event.payload
@@ -544,13 +568,36 @@ class WebhookManager:
     async def _handle_generic_message(self, webhook: WebhookConfig,
                                     event: WebhookEvent) -> IntegrationResponse:
         """Handle generic webhook message"""
-        return IntegrationResponse(
-            success=True,
-            status_code=200,
-            response_data={"message": "Generic webhook processed"},
-            response_time=0,
-            error_message=None
-        )
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(webhook.endpoint_url, json=event.payload, headers=webhook.headers, timeout=webhook.timeout_seconds) as resp:
+                    response_data = await resp.json()
+                    response_time = resp.response_time
+                    status_code = resp.status
+                    
+                    return IntegrationResponse(
+                        success=True,
+                        status_code=status_code,
+                        response_data=response_data,
+                        response_time=response_time,
+                        error_message=None
+                    )
+        except aiohttp.ClientError as e:
+            return IntegrationResponse(
+                success=False,
+                status_code=500,
+                response_data={"error": str(e)},
+                response_time=0,
+                error_message=str(e)
+            )
+        except asyncio.TimeoutError:
+            return IntegrationResponse(
+                success=False,
+                status_code=408,
+                response_data={"error": "Timeout"},
+                response_time=webhook.timeout_seconds,
+                error_message="Timeout"
+            )
     
     def _store_webhook_event(self, event: WebhookEvent):
         """Store webhook event in database"""
@@ -733,6 +780,314 @@ class WebhookManager:
                 })
 
         return recommendations
+
+    async def send_outgoing_webhook(self, webhook_id: str, payload: Dict[str, Any],
+                                  event_type: str = "message") -> Dict[str, Any]:
+        """Send outgoing webhook with retry logic"""
+        webhook = self.webhooks.get(webhook_id)
+        if not webhook:
+            return {
+                "success": False,
+                "error": f"Webhook {webhook_id} not found",
+                "attempts": 0
+            }
+
+        if not webhook.active:
+            return {
+                "success": False,
+                "error": f"Webhook {webhook_id} is inactive",
+                "attempts": 0
+            }
+
+        # Prepare the payload
+        webhook_payload = {
+            "event_type": event_type,
+            "webhook_id": webhook_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "data": payload
+        }
+
+        return await self._deliver_webhook_with_retry(webhook, webhook_payload)
+
+    async def _deliver_webhook_with_retry(self, webhook: WebhookConfig,
+                                        payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Deliver webhook with exponential backoff retry logic"""
+        last_error = None
+        response_times = []
+
+        for attempt in range(webhook.retry_attempts):
+            try:
+                start_time = time.time()
+                response = await self._make_webhook_request(webhook, payload)
+                response_time = time.time() - start_time
+                response_times.append(response_time)
+
+                # Log successful delivery
+                await self._log_webhook_event(
+                    webhook.webhook_id,
+                    "outgoing_success",
+                    payload,
+                    response_time,
+                    attempt + 1,
+                    None
+                )
+
+                return {
+                    "success": True,
+                    "attempts": attempt + 1,
+                    "response_time": response_time,
+                    "status_code": response.get("status_code"),
+                    "response_data": response.get("data")
+                }
+
+            except Exception as e:
+                last_error = str(e)
+                response_time = time.time() - start_time if 'start_time' in locals() else 0
+                response_times.append(response_time)
+
+                # Log failed attempt
+                await self._log_webhook_event(
+                    webhook.webhook_id,
+                    "outgoing_failure",
+                    payload,
+                    response_time,
+                    attempt + 1,
+                    last_error
+                )
+
+                # Don't retry on certain permanent errors
+                if self._is_permanent_webhook_error(e):
+                    break
+
+                # Wait before retry (exponential backoff)
+                if attempt < webhook.retry_attempts - 1:
+                    delay = min(2 ** attempt, 60)  # Max 60 seconds
+                    await asyncio.sleep(delay)
+
+        # All retries failed
+        avg_response_time = sum(response_times) / len(response_times) if response_times else 0
+
+        return {
+            "success": False,
+            "attempts": webhook.retry_attempts,
+            "error": last_error,
+            "avg_response_time": avg_response_time
+        }
+
+    async def _make_webhook_request(self, webhook: WebhookConfig,
+                                  payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Make HTTP request to webhook endpoint"""
+        headers = webhook.headers.copy() if webhook.headers else {}
+        headers['Content-Type'] = 'application/json'
+        headers['User-Agent'] = 'SynapseFlow-Webhook/1.0'
+
+        # Add signature if secret key is provided
+        if webhook.secret_key:
+            signature = self._generate_webhook_signature(payload, webhook.secret_key)
+            headers['X-Hub-Signature-256'] = f'sha256={signature}'
+
+        timeout = aiohttp.ClientTimeout(total=webhook.timeout_seconds)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(
+                webhook.endpoint_url,
+                json=payload,
+                headers=headers
+            ) as response:
+                response_data = None
+                try:
+                    response_data = await response.json()
+                except:
+                    response_data = {"text": await response.text()}
+
+                if response.status >= 400:
+                    raise aiohttp.ClientResponseError(
+                        request_info=response.request_info,
+                        history=response.history,
+                        status=response.status,
+                        message=f"HTTP {response.status}: {response_data}"
+                    )
+
+                return {
+                    "status_code": response.status,
+                    "headers": dict(response.headers),
+                    "data": response_data
+                }
+
+    def _generate_webhook_signature(self, payload: Dict[str, Any], secret: str) -> str:
+        """Generate HMAC signature for webhook payload"""
+        payload_bytes = json.dumps(payload, sort_keys=True).encode('utf-8')
+        signature = hmac.new(
+            secret.encode('utf-8'),
+            payload_bytes,
+            hashlib.sha256
+        ).hexdigest()
+        return signature
+
+    def _is_permanent_webhook_error(self, error: Exception) -> bool:
+        """Determine if error is permanent (don't retry)"""
+        if isinstance(error, aiohttp.ClientResponseError):
+            # Don't retry on client errors (4xx)
+            if 400 <= error.status < 500:
+                return True
+
+        error_str = str(error).lower()
+        permanent_indicators = [
+            "unauthorized", "forbidden", "not found", "method not allowed",
+            "unprocessable entity", "bad request", "conflict"
+        ]
+        return any(indicator in error_str for indicator in permanent_indicators)
+
+    async def _log_webhook_event(self, webhook_id: str, event_type: str,
+                                payload: Dict[str, Any], response_time: float,
+                                attempt_number: int, error_message: Optional[str]):
+        """Log webhook event to database"""
+        event_id = f"{webhook_id}_{int(time.time() * 1000)}_{attempt_number}"
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    INSERT INTO webhook_events
+                    (event_id, webhook_id, event_type, payload_size, response_time,
+                     status, error_message, created_at, attempt_number)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    event_id,
+                    webhook_id,
+                    event_type,
+                    len(json.dumps(payload)),
+                    response_time,
+                    "success" if error_message is None else "failure",
+                    error_message,
+                    datetime.utcnow().isoformat(),
+                    attempt_number
+                ))
+        except Exception as e:
+            self.logger.error(f"Failed to log webhook event: {e}")
+
+    async def broadcast_to_webhooks(self, event_type: str, payload: Dict[str, Any],
+                                  platform_filter: Optional[MessagePlatform] = None) -> Dict[str, Any]:
+        """Broadcast event to all matching outgoing webhooks"""
+        results = {}
+        matching_webhooks = []
+
+        for webhook_id, webhook in self.webhooks.items():
+            if webhook.integration_type != IntegrationType.WEBHOOK_OUTGOING:
+                continue
+
+            if platform_filter and webhook.platform != platform_filter:
+                continue
+
+            if not webhook.active:
+                continue
+
+            matching_webhooks.append((webhook_id, webhook))
+
+        if not matching_webhooks:
+            return {
+                "success": True,
+                "message": "No matching webhooks found",
+                "results": {}
+            }
+
+        # Send webhooks concurrently
+        tasks = [
+            self._deliver_webhook_with_retry(webhook, {
+                "event_type": event_type,
+                "webhook_id": webhook_id,
+                "timestamp": datetime.utcnow().isoformat(),
+                "data": payload
+            })
+            for webhook_id, webhook in matching_webhooks
+        ]
+
+        webhook_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, (webhook_id, _) in enumerate(matching_webhooks):
+            result = webhook_results[i]
+            if isinstance(result, Exception):
+                results[webhook_id] = {
+                    "success": False,
+                    "error": str(result),
+                    "attempts": 0
+                }
+            else:
+                results[webhook_id] = result
+
+        successful_deliveries = sum(1 for r in results.values() if r.get("success"))
+        total_deliveries = len(results)
+
+        return {
+            "success": successful_deliveries > 0,
+            "total_webhooks": total_deliveries,
+            "successful_deliveries": successful_deliveries,
+            "failed_deliveries": total_deliveries - successful_deliveries,
+            "results": results
+        }
+
+    def get_webhook_retry_stats(self, webhook_id: str, hours: int = 24) -> Dict[str, Any]:
+        """Get retry statistics for a webhook"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cutoff_time = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+
+                # Get retry statistics
+                cursor.execute("""
+                    SELECT
+                        COUNT(*) as total_attempts,
+                        COUNT(CASE WHEN status = 'success' THEN 1 END) as successful_attempts,
+                        COUNT(CASE WHEN status = 'failure' THEN 1 END) as failed_attempts,
+                        AVG(response_time) as avg_response_time,
+                        MAX(attempt_number) as max_attempts,
+                        COUNT(DISTINCT DATE(created_at)) as active_days
+                    FROM webhook_events
+                    WHERE webhook_id = ? AND created_at > ?
+                """, (webhook_id, cutoff_time))
+
+                stats = cursor.fetchone()
+
+                if not stats or stats[0] == 0:
+                    return {
+                        "webhook_id": webhook_id,
+                        "period_hours": hours,
+                        "no_data": True
+                    }
+
+                # Get failure reasons
+                cursor.execute("""
+                    SELECT error_message, COUNT(*) as count
+                    FROM webhook_events
+                    WHERE webhook_id = ? AND created_at > ? AND status = 'failure'
+                    GROUP BY error_message
+                    ORDER BY count DESC
+                    LIMIT 5
+                """, (webhook_id, cutoff_time))
+
+                failure_reasons = [
+                    {"error": row[0], "count": row[1]}
+                    for row in cursor.fetchall()
+                ]
+
+                return {
+                    "webhook_id": webhook_id,
+                    "period_hours": hours,
+                    "total_attempts": stats[0],
+                    "successful_attempts": stats[1],
+                    "failed_attempts": stats[2],
+                    "success_rate": (stats[1] / stats[0]) if stats[0] > 0 else 0,
+                    "avg_response_time": stats[3] or 0,
+                    "max_attempts_in_delivery": stats[4],
+                    "active_days": stats[5],
+                    "top_failure_reasons": failure_reasons
+                }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get retry stats for {webhook_id}: {e}")
+            return {
+                "webhook_id": webhook_id,
+                "error": str(e)
+            }
 
 # Global webhook manager instance
 _webhook_manager = None

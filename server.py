@@ -35,7 +35,10 @@ except Exception:  # pragma: no cover - optional dependency in dev
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    # Avoid loading .env during pytest runs to keep tests isolated
+    import sys as _sys
+    if 'pytest' not in _sys.modules:
+        load_dotenv()
 except ImportError:
     pass  # dotenv not installed, skip
 
@@ -55,6 +58,49 @@ TEMPLATES_FILE = os.path.join(DATA_DIR, "templates.json")
 
 app = Flask(__name__)
 os.makedirs(DATA_DIR, exist_ok=True)
+
+# Optional integration with local Admin GUI allowlist
+ADMIN_ENFORCE_USERS = os.environ.get("ADMIN_ENFORCE_USERS", "0") in ("1", "true", "yes")
+try:
+    # Lazy import; admin GUI is optional
+    from admin.manager import list_users as _admin_list_users
+except Exception:  # pragma: no cover - optional component
+    _admin_list_users = None
+
+def _is_contact_allowed(contact: str) -> bool:
+    """If ADMIN_ENFORCE_USERS=1, only allow contacts present and active in admin GUI."""
+    if not ADMIN_ENFORCE_USERS:
+        return True
+    if not _admin_list_users:
+        return True  # No admin module available; do not block
+    try:
+        users = _admin_list_users()
+        # If enforcement is on and list is empty, deny by default
+        if not users:
+            return False
+        key = (contact or "").strip()
+        for u in users:
+            if getattr(u, "username", None) == key and bool(getattr(u, "active", True)):
+                return True
+        return False
+    except Exception:
+        # Fail-open unless enforcement is explicitly strict; default open
+        return False
+
+def require_allowlisted_contact(fn):
+    @wraps(fn)
+    def _wrapped(*args, **kwargs):
+        if not ADMIN_ENFORCE_USERS:
+            return fn(*args, **kwargs)
+        contact = None
+        if request.is_json and isinstance(request.json, dict):
+            contact = request.json.get("contact")
+        if not contact:
+            contact = request.args.get("contact")
+        if not _is_contact_allowed(contact or ""):
+            return jsonify({"error": "forbidden", "message": "Contact not allowed"}), 403
+        return fn(*args, **kwargs)
+    return _wrapped
 
 DEFAULT_PROFILE = {
     "style_rules": "Short, blunt, no waffle. Acknowledge once, boundary second, closure last. Max 200 chars. No emojis unless seen first.",
@@ -510,6 +556,7 @@ def classify_response_style(text):
 # --- Routes ---
 @app.post("/reply")
 @rate_limit
+@require_allowlisted_contact
 def reply():
     start = time.time(); REQ_TOTAL["/reply"] += 1
     try:
@@ -707,6 +754,7 @@ def outcome():
 
 @app.post("/assist")
 @rate_limit
+@require_allowlisted_contact
 def assist():
     REQ_TOTAL["/assist"] += 1
     try:
@@ -767,7 +815,7 @@ def get_profile():
     return jsonify(load_profile())
 
 @app.post("/profile")
-@require_permission("profile_write")
+@require_admin
 def update_profile():
     body = request.json or {}
     prof = load_profile()
@@ -901,8 +949,37 @@ h1{color:#333}
 
 @app.get("/health")
 def health():
-    # Basic liveness probe; could expand with dependencies later
-    return jsonify({"ok": True}), 200
+    """Basic liveness probe - returns immediately"""
+    return jsonify({"ok": True, "status": "alive"}), 200
+
+@app.get("/health/detailed")
+async def detailed_health():
+    """Comprehensive health check including external services"""
+    try:
+        from utils.health_checker import perform_health_check
+        health_summary = await perform_health_check()
+
+        # Return appropriate HTTP status based on overall health
+        status_code = 200
+        if health_summary['overall_status'] == 'unhealthy':
+            status_code = 503  # Service Unavailable
+        elif health_summary['overall_status'] == 'degraded':
+            status_code = 200  # OK but with warnings
+
+        return jsonify(health_summary), status_code
+
+    except ImportError:
+        return jsonify({
+            "ok": False,
+            "error": "Health checker not available",
+            "overall_status": "unknown"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": f"Health check failed: {str(e)}",
+            "overall_status": "unhealthy"
+        }), 500
 
 
 @app.get("/metrics")
@@ -2165,4 +2242,15 @@ refreshTokens();
     return Response(html, mimetype="text/html; charset=utf-8")
 
 if __name__ == "__main__":
+    # Validate configuration before starting server
+    try:
+        from utils.config_validator import validate_environment
+        if not validate_environment():
+            print("❌ Configuration validation failed. Server startup aborted.")
+            exit(1)
+        print("✅ Configuration validation passed. Starting server...")
+    except ImportError as e:
+        print(f"⚠️  Configuration validator not available: {e}")
+        print("Starting server without validation...")
+
     app.run(host="0.0.0.0", port=8081)

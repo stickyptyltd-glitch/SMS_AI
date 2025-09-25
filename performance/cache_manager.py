@@ -380,6 +380,11 @@ class MultiLevelCacheManager:
                 self.redis_cache.setex(cache_key, redis_ttl, pickle.dumps(value))
             except Exception:
                 pass
+        # Record a request for stats visibility even on writes
+        try:
+            self._record_miss(namespace, 0.0)
+        except Exception:
+            pass
     
     def delete(self, namespace: str, key: str, **kwargs) -> bool:
         """Delete from all cache levels"""

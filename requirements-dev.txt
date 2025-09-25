@@ -1,0 +1,50 @@
+# Include all production requirements
+-r requirements-server.txt
+
+# Testing frameworks
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+pytest-mock>=3.12.0
+pytest-xdist>=3.3.0
+
+# Code formatting and linting
+black>=23.9.0
+isort>=5.12.0
+flake8>=6.0.0
+autopep8>=2.0.0
+
+# Type checking
+mypy>=1.6.0
+types-requests>=2.31.0
+types-redis>=4.6.0
+
+# Development tools
+ipython>=8.15.0
+jupyterlab>=4.0.0
+pre-commit>=3.4.0
+
+# Security scanning
+bandit>=1.7.5
+safety>=2.3.0
+
+# Documentation
+sphinx>=7.2.0
+sphinx-rtd-theme>=1.3.0
+mkdocs>=1.5.0
+mkdocs-material>=9.4.0
+
+# Performance profiling
+memory-profiler>=0.61.0
+py-spy>=0.3.14
+
+# API testing
+httpx>=0.25.0
+responses>=0.23.0
+
+# Database tools (for testing)
+sqlite3
+
+# Development utilities
+python-decouple>=3.8
+watchdog>=3.0.0

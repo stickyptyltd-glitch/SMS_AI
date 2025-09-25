@@ -134,19 +134,26 @@ class ModelPerformanceTracker:
 
 class MultiModelManager:
     """Manages multiple AI models with intelligent routing and fallback"""
-    
+
     def __init__(self, data_dir: str = "synapseflow_data"):
         self.data_dir = data_dir
         self.models: Dict[str, ModelConfig] = {}
         self.performance_tracker = ModelPerformanceTracker(data_dir)
         self.request_cache = {}
         self.cache_ttl = 300  # 5 minutes
-        
+
         # Load model configurations
         self._load_model_configs()
-        
+
         # Rate limiting
         self.rate_limits = {}
+
+        # Fallback configuration
+        self.max_retries = 3
+        self.retry_delay = 1.0  # seconds
+        self.circuit_breaker = {}  # Track failing models
+        self.circuit_breaker_threshold = 5  # failures before opening circuit
+        self.circuit_breaker_timeout = 300  # 5 minutes before retry
     
     def _load_model_configs(self):
         """Load model configurations"""
@@ -561,20 +568,190 @@ class MultiModelManager:
     
     async def _try_fallback(self, prompt: str, capability: ModelCapability,
                            options: Dict, failed_model: ModelConfig) -> Optional[ModelResponse]:
-        """Try fallback models when primary fails"""
-        fallback_models = [m for m in self.models.values() 
-                          if m != failed_model and capability in m.capabilities]
-        
-        fallback_models.sort(key=lambda m: m.priority)
-        
+        """Try fallback models with circuit breaker and retry logic"""
+        # Record failure for circuit breaker
+        self._record_failure(failed_model)
+
+        fallback_models = self._get_available_fallback_models(capability, failed_model)
+
         for model_config in fallback_models:
+            # Check circuit breaker
+            if self._is_circuit_breaker_open(model_config):
+                continue
+
             if self._check_rate_limit(model_config):
                 try:
-                    return await self._call_model(model_config, prompt, options)
-                except Exception:
+                    response = await self._call_model_with_retry(model_config, prompt, options)
+                    if response:
+                        # Reset circuit breaker on success
+                        self._reset_circuit_breaker(model_config)
+                        return response
+                except Exception as e:
+                    self._record_failure(model_config)
+                    print(f"Fallback model {model_config.model_name} failed: {e}")
                     continue
-        
-        return None
+
+        # All models failed, try template-based fallback
+        return self._generate_template_response(prompt, capability)
+
+    def _get_available_fallback_models(self, capability: ModelCapability,
+                                     failed_model: ModelConfig) -> List[ModelConfig]:
+        """Get available fallback models sorted by priority and reliability"""
+        fallback_models = []
+
+        for model_config in self.models.values():
+            if model_config == failed_model or capability not in model_config.capabilities:
+                continue
+
+            # Skip models with open circuit breakers (unless enough time has passed)
+            if self._is_circuit_breaker_open(model_config):
+                continue
+
+            fallback_models.append(model_config)
+
+        # Sort by priority and reliability
+        fallback_models.sort(key=lambda m: (
+            m.priority,
+            -self._get_reliability_score(m)
+        ))
+
+        return fallback_models
+
+    async def _call_model_with_retry(self, model_config: ModelConfig, prompt: str,
+                                   options: Dict) -> Optional[ModelResponse]:
+        """Call model with retry logic"""
+        last_exception = None
+
+        for attempt in range(self.max_retries):
+            try:
+                return await self._call_model(model_config, prompt, options)
+
+            except Exception as e:
+                last_exception = e
+
+                # Don't retry on certain types of errors
+                if self._is_permanent_error(e):
+                    break
+
+                if attempt < self.max_retries - 1:
+                    # Exponential backoff
+                    delay = self.retry_delay * (2 ** attempt)
+                    await asyncio.sleep(delay)
+
+        # All retries failed
+        raise last_exception or Exception("All retries exhausted")
+
+    def _is_permanent_error(self, error: Exception) -> bool:
+        """Determine if error is permanent (don't retry)"""
+        error_str = str(error).lower()
+        permanent_indicators = [
+            "authentication", "unauthorized", "forbidden", "api key",
+            "invalid request", "model not found", "bad request"
+        ]
+        return any(indicator in error_str for indicator in permanent_indicators)
+
+    def _record_failure(self, model_config: ModelConfig):
+        """Record model failure for circuit breaker"""
+        model_key = f"{model_config.provider.value}:{model_config.model_name}"
+        current_time = time.time()
+
+        if model_key not in self.circuit_breaker:
+            self.circuit_breaker[model_key] = {
+                'failures': 0,
+                'last_failure': current_time,
+                'state': 'closed'  # closed, open, half-open
+            }
+
+        breaker = self.circuit_breaker[model_key]
+        breaker['failures'] += 1
+        breaker['last_failure'] = current_time
+
+        # Open circuit if too many failures
+        if breaker['failures'] >= self.circuit_breaker_threshold:
+            breaker['state'] = 'open'
+            print(f"Circuit breaker OPEN for {model_key} after {breaker['failures']} failures")
+
+    def _is_circuit_breaker_open(self, model_config: ModelConfig) -> bool:
+        """Check if circuit breaker is open for model"""
+        model_key = f"{model_config.provider.value}:{model_config.model_name}"
+
+        if model_key not in self.circuit_breaker:
+            return False
+
+        breaker = self.circuit_breaker[model_key]
+        current_time = time.time()
+
+        if breaker['state'] == 'open':
+            # Check if enough time has passed to try again
+            if current_time - breaker['last_failure'] > self.circuit_breaker_timeout:
+                breaker['state'] = 'half-open'
+                print(f"Circuit breaker HALF-OPEN for {model_key}")
+                return False
+            return True
+
+        return breaker['state'] == 'open'
+
+    def _reset_circuit_breaker(self, model_config: ModelConfig):
+        """Reset circuit breaker after successful call"""
+        model_key = f"{model_config.provider.value}:{model_config.model_name}"
+
+        if model_key in self.circuit_breaker:
+            self.circuit_breaker[model_key] = {
+                'failures': 0,
+                'last_failure': 0,
+                'state': 'closed'
+            }
+
+    def _get_reliability_score(self, model_config: ModelConfig) -> float:
+        """Get reliability score for model"""
+        stats = self.performance_tracker.get_model_stats(
+            model_config.provider.value,
+            model_config.model_name
+        )
+
+        if not stats or stats.get("total_requests", 0) == 0:
+            return model_config.reliability_score
+
+        # Combine configured reliability with actual performance
+        success_rate = stats.get("success_rate", 0)
+        return (model_config.reliability_score + success_rate) / 2
+
+    def _generate_template_response(self, prompt: str, capability: ModelCapability) -> Optional[ModelResponse]:
+        """Generate simple template-based response as last resort"""
+        templates = {
+            ModelCapability.TEXT_GENERATION: [
+                "I understand your message. Let me help you with that.",
+                "I'm processing your request. Please give me a moment.",
+                "Thank you for your message. I'll get back to you shortly."
+            ],
+            ModelCapability.CONVERSATION: [
+                "I hear you. Let me think about that.",
+                "That's interesting. Can you tell me more?",
+                "I understand. How can I help you with this?"
+            ],
+            ModelCapability.ANALYSIS: [
+                "Based on your message, this appears to be a neutral inquiry.",
+                "Your message seems to express a need for assistance.",
+                "I'm analyzing your request and will provide insights."
+            ]
+        }
+
+        fallback_responses = templates.get(capability, [
+            "I apologize, but I'm experiencing technical difficulties. Please try again later."
+        ])
+
+        response_text = random.choice(fallback_responses)
+
+        return ModelResponse(
+            content=response_text,
+            provider=ModelProvider.OLLAMA,  # Mark as fallback
+            model_name="template_fallback",
+            tokens_used=len(response_text.split()),
+            response_time=0.1,
+            cost=0.0,
+            confidence=0.3,  # Low confidence for template responses
+            metadata={'fallback': True, 'template': True}
+        )
     
     def get_model_performance_report(self) -> Dict:
         """Get comprehensive model performance report"""

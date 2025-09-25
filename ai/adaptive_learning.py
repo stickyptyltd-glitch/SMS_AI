@@ -85,6 +85,23 @@ class FeatureExtractor:
         features['caps_ratio'] = sum(1 for char in text if char.isupper()) / len(text) if text else 0
         features['punctuation_density'] = sum(1 for char in text if not char.isalnum() and not char.isspace()) / len(text) if text else 0
 
+        # Sentiment analysis
+        positive_words = ['good', 'great', 'awesome', 'happy', 'love', 'excellent', 'amazing',
+                         'wonderful', 'fantastic', 'brilliant', 'perfect', 'outstanding', 'superb']
+        negative_words = ['bad', 'terrible', 'hate', 'awful', 'horrible', 'sad', 'angry',
+                         'disappointed', 'frustrated', 'annoyed', 'upset', 'worried', 'stressed']
+
+        positive_count = sum(1 for word in words if word in positive_words)
+        negative_count = sum(1 for word in words if word in negative_words)
+
+        total_words = len(words)
+        if total_words > 0:
+            sentiment_score = (positive_count - negative_count) / total_words
+        else:
+            sentiment_score = 0
+
+        features['sentiment_score'] = sentiment_score
+
         # Semantic features
         features['contains_greeting'] = any(word in text_lower for word in ['hello', 'hi', 'hey', 'good morning', 'good evening'])
         features['contains_goodbye'] = any(word in text_lower for word in ['bye', 'goodbye', 'see you', 'talk later'])
@@ -100,7 +117,8 @@ class FeatureExtractor:
             features['user_mood'] = context.get('user_mood', 'neutral')
             features['conversation_topic'] = context.get('conversation_topic', 'general')
 
-        return features
+        feature_vector = list(features.values())
+        return feature_vector
     
     def fit_tfidf(self, texts: List[str]):
         """Fit TF-IDF vectorizer on text corpus"""
@@ -140,9 +158,10 @@ class AdaptiveLearningSystem:
         self.feedback_weight_decay = 0.95  # Older feedback has less weight
         
     def _init_database(self):
-        """Initialize learning database"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+        """Initialize learning database, recovering from corruption if needed"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
                 CREATE TABLE IF NOT EXISTS learning_examples (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     input_text TEXT NOT NULL,
@@ -154,8 +173,8 @@ class AdaptiveLearningSystem:
                     success_metrics TEXT
                 )
             """)
-            
-            conn.execute("""
+                
+                conn.execute("""
                 CREATE TABLE IF NOT EXISTS response_patterns (
                     pattern_id TEXT PRIMARY KEY,
                     input_features TEXT,
@@ -166,8 +185,8 @@ class AdaptiveLearningSystem:
                     confidence_score REAL
                 )
             """)
-            
-            conn.execute("""
+                
+                conn.execute("""
                 CREATE TABLE IF NOT EXISTS user_preferences (
                     contact TEXT,
                     preference_key TEXT,
@@ -177,6 +196,51 @@ class AdaptiveLearningSystem:
                     PRIMARY KEY (contact, preference_key)
                 )
             """)
+        except sqlite3.DatabaseError as e:
+            # Handle corrupted database files gracefully
+            if "file is not a database" in str(e).lower():
+                try:
+                    if os.path.exists(self.db_path):
+                        os.remove(self.db_path)
+                except Exception:
+                    pass
+                # Recreate a fresh database
+                with sqlite3.connect(self.db_path) as conn:
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS learning_examples (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            input_text TEXT NOT NULL,
+                            response_text TEXT NOT NULL,
+                            user_feedback REAL,
+                            context TEXT,
+                            timestamp TEXT NOT NULL,
+                            contact TEXT,
+                            success_metrics TEXT
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS response_patterns (
+                            pattern_id TEXT PRIMARY KEY,
+                            input_features TEXT,
+                            response_template TEXT,
+                            success_rate REAL,
+                            usage_count INTEGER,
+                            last_updated TEXT,
+                            confidence_score REAL
+                        )
+                    """)
+                    conn.execute("""
+                        CREATE TABLE IF NOT EXISTS user_preferences (
+                            contact TEXT,
+                            preference_key TEXT,
+                            preference_value TEXT,
+                            confidence REAL,
+                            last_updated TEXT,
+                            PRIMARY KEY (contact, preference_key)
+                        )
+                    """)
+            else:
+                raise
     
     def _load_learning_data(self):
         """Load existing learning data from database"""
@@ -353,22 +417,22 @@ class AdaptiveLearningSystem:
                 pattern.confidence_score
             ))
     
-    def _summarize_features(self, feature_list: List[Dict]) -> List[str]:
+    def _summarize_features(self, feature_list: List[List]) -> List[str]:
         """Summarize features from multiple examples"""
         if not feature_list:
             return []
-        
+
         # Find common characteristics
         summary = []
-        
+
         # Average numerical features
-        numerical_features = ['length', 'word_count', 'positive_word_count', 'negative_word_count']
-        for feature in numerical_features:
-            values = [f.get(feature, 0) for f in feature_list]
+        num_features = len(feature_list[0]) if feature_list else 0
+        for i in range(num_features):
+            values = [f[i] for f in feature_list]
             avg_value = np.mean(values)
             if avg_value > 0:
-                summary.append(f"{feature}:{avg_value:.1f}")
-        
+                summary.append(f"feature_{i}:{avg_value:.1f}")
+
         return summary
     
     def get_response_suggestion(self, input_text: str, context: Dict = None,
@@ -409,26 +473,23 @@ class AdaptiveLearningSystem:
         
         return None
     
-    def _calculate_pattern_similarity(self, features: Dict, pattern: ResponsePattern) -> float:
+    def _calculate_pattern_similarity(self, features: List, pattern: ResponsePattern) -> float:
         """Calculate similarity between input features and pattern"""
-        # Simple similarity calculation
-        # In a real implementation, this would be more sophisticated
-        score = 0.5  # Base score
-        
-        # Check feature matches
-        for feature_desc in pattern.input_features:
-            if ':' in feature_desc:
-                feature_name, expected_value = feature_desc.split(':', 1)
-                if feature_name in features:
-                    actual_value = features[feature_name]
-                    expected_value = float(expected_value)
-                    
-                    # Calculate similarity (closer values = higher score)
-                    if expected_value > 0:
-                        similarity = 1 - abs(actual_value - expected_value) / max(actual_value, expected_value)
-                        score += similarity * 0.1
-        
-        return min(score, 1.0)
+        # Use cosine similarity
+        pattern_features = np.array(json.loads(pattern.input_features))
+        input_features = np.array(features)
+
+        if len(pattern_features) == 0 or len(input_features) == 0:
+            return 0.0
+
+        # Pad the shorter array with zeros to match the length of the longer array
+        if len(pattern_features) < len(input_features):
+            pattern_features = np.pad(pattern_features, (0, len(input_features) - len(pattern_features)), 'constant')
+        elif len(input_features) < len(pattern_features):
+            input_features = np.pad(input_features, (0, len(pattern_features) - len(input_features)), 'constant')
+
+        similarity = cosine_similarity(input_features.reshape(1, -1), pattern_features.reshape(1, -1))[0][0]
+        return similarity
     
     def update_user_preference(self, contact: str, preference_key: str,
                              preference_value: str, confidence: float = 0.8):

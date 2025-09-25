@@ -30,13 +30,13 @@ class SecurityEvent:
 
 class RateLimiter:
     """Advanced rate limiting with multiple strategies"""
-    
+
     def __init__(self):
         self.requests = defaultdict(deque)  # IP -> deque of timestamps
         self.user_requests = defaultdict(deque)  # user_id -> deque of timestamps
         self.blocked_ips = {}  # IP -> block_until_timestamp
         self.suspicious_ips = set()
-        
+
         # Rate limit configurations
         self.limits = {
             'default': {'requests': 100, 'window': 3600},  # 100 requests per hour
@@ -44,24 +44,33 @@ class RateLimiter:
             'api': {'requests': 1000, 'window': 3600},     # 1000 API calls per hour
             'register': {'requests': 3, 'window': 3600},   # 3 registrations per hour
         }
+
+        # Memory management
+        self.max_cache_entries = 10000  # Maximum number of identifiers to track
+        self.cleanup_threshold = 12000  # Trigger cleanup at this many entries
+        self.last_cleanup = time.time()
+        self.cleanup_interval = 300  # Run cleanup every 5 minutes
     
     def is_rate_limited(self, identifier: str, limit_type: str = 'default') -> Tuple[bool, int]:
         """Check if identifier is rate limited"""
         now = time.time()
         limit_config = self.limits.get(limit_type, self.limits['default'])
-        
+
+        # Perform cleanup if needed (prevents memory leaks)
+        self._perform_cleanup_if_needed()
+
         # Clean old requests
         requests = self.requests[identifier]
         cutoff = now - limit_config['window']
         while requests and requests[0] < cutoff:
             requests.popleft()
-        
+
         # Check limit
         if len(requests) >= limit_config['requests']:
             # Calculate reset time
             reset_time = int(requests[0] + limit_config['window'])
             return True, reset_time
-        
+
         # Add current request
         requests.append(now)
         return False, 0
@@ -101,6 +110,88 @@ class RateLimiter:
             'remaining': max(0, limit_config['requests'] - recent_requests),
             'reset_time': int(now + limit_config['window']),
             'window': limit_config['window']
+        }
+
+    def _cleanup_expired_entries(self) -> int:
+        """Clean up expired entries to prevent memory leaks"""
+        now = time.time()
+        cleaned_count = 0
+
+        # Clean up blocked IPs
+        expired_ips = [ip for ip, block_time in self.blocked_ips.items() if now >= block_time]
+        for ip in expired_ips:
+            del self.blocked_ips[ip]
+            self.suspicious_ips.discard(ip)
+            cleaned_count += 1
+
+        # Clean up old request tracking
+        for identifier in list(self.requests.keys()):
+            requests = self.requests[identifier]
+            # Remove all requests older than the longest window (1 hour by default)
+            max_window = max(config['window'] for config in self.limits.values())
+            cutoff = now - max_window
+
+            # Clean old entries
+            while requests and requests[0] < cutoff:
+                requests.popleft()
+                cleaned_count += 1
+
+            # Remove empty deques to save memory
+            if not requests:
+                del self.requests[identifier]
+                cleaned_count += 1
+
+        # Clean up user requests similarly
+        for user_id in list(self.user_requests.keys()):
+            requests = self.user_requests[user_id]
+            max_window = max(config['window'] for config in self.limits.values())
+            cutoff = now - max_window
+
+            while requests and requests[0] < cutoff:
+                requests.popleft()
+                cleaned_count += 1
+
+            if not requests:
+                del self.user_requests[user_id]
+                cleaned_count += 1
+
+        return cleaned_count
+
+    def _should_cleanup(self) -> bool:
+        """Determine if cleanup should run"""
+        now = time.time()
+
+        # Force cleanup if too many entries
+        total_entries = len(self.requests) + len(self.user_requests) + len(self.blocked_ips)
+        if total_entries > self.cleanup_threshold:
+            return True
+
+        # Periodic cleanup
+        if now - self.last_cleanup > self.cleanup_interval:
+            return True
+
+        return False
+
+    def _perform_cleanup_if_needed(self) -> None:
+        """Perform cleanup if needed"""
+        if self._should_cleanup():
+            cleaned = self._cleanup_expired_entries()
+            self.last_cleanup = time.time()
+            if cleaned > 0:
+                print(f"Rate limiter cleaned up {cleaned} expired entries")
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get memory usage statistics"""
+        return {
+            'requests_cache_size': len(self.requests),
+            'user_requests_cache_size': len(self.user_requests),
+            'blocked_ips_count': len(self.blocked_ips),
+            'suspicious_ips_count': len(self.suspicious_ips),
+            'total_entries': len(self.requests) + len(self.user_requests) + len(self.blocked_ips),
+            'cleanup_threshold': self.cleanup_threshold,
+            'max_cache_entries': self.max_cache_entries,
+            'last_cleanup': self.last_cleanup,
+            'memory_pressure': len(self.requests) + len(self.user_requests) > self.max_cache_entries
         }
 
 class SecurityMonitor:

@@ -119,9 +119,26 @@ class ConversationContextManager:
         if not turns:
             return []
         
-        # For now, return most recent turns
-        # TODO: Implement semantic similarity matching
-        return turns[-max_turns:]
+        # Use semantic similarity to find most relevant turns
+        if len(turns) <= max_turns:
+            return turns
+
+        try:
+            # Calculate semantic similarity between current message and historical turns
+            similarities = self._calculate_semantic_similarities(current_message, turns)
+
+            # Get indices of most similar turns
+            similar_indices = sorted(range(len(similarities)),
+                                   key=lambda i: similarities[i], reverse=True)[:max_turns]
+
+            # Return turns sorted by chronological order
+            relevant_turns = [turns[i] for i in sorted(similar_indices)]
+            return relevant_turns
+
+        except Exception as e:
+            print(f"Semantic similarity calculation failed: {e}")
+            # Fallback to recent turns
+            return turns[-max_turns:]
     
     def build_context_prompt(self, contact: str, current_message: str, personality: Optional[PersonalityProfile] = None) -> str:
         """Build context-aware prompt for AI"""
@@ -260,6 +277,129 @@ class ConversationContextManager:
                 summary_parts.append("- Mixed sentiment")
         
         return "\n".join(summary_parts)
+
+    def _calculate_semantic_similarities(self, current_message: str, turns: List[ConversationTurn]) -> List[float]:
+        """Calculate semantic similarity between current message and conversation turns"""
+        try:
+            # Try to use a more sophisticated similarity calculation
+            return self._calculate_advanced_similarities(current_message, turns)
+        except Exception:
+            # Fallback to simple keyword-based similarity
+            return self._calculate_keyword_similarities(current_message, turns)
+
+    def _calculate_advanced_similarities(self, current_message: str, turns: List[ConversationTurn]) -> List[float]:
+        """Calculate similarities using TF-IDF and cosine similarity"""
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            from sklearn.metrics.pairwise import cosine_similarity
+            import numpy as np
+
+            # Prepare text corpus
+            texts = [current_message]
+            for turn in turns:
+                # Combine incoming and response for better context
+                combined_text = f"{turn.incoming_message} {turn.response_text or ''}"
+                texts.append(combined_text)
+
+            # Calculate TF-IDF vectors
+            vectorizer = TfidfVectorizer(
+                lowercase=True,
+                stop_words='english',
+                ngram_range=(1, 2),
+                max_features=1000
+            )
+
+            tfidf_matrix = vectorizer.fit_transform(texts)
+
+            # Calculate cosine similarity between current message and each turn
+            current_vector = tfidf_matrix[0:1]  # First row is current message
+            historical_vectors = tfidf_matrix[1:]  # Rest are historical turns
+
+            similarities = cosine_similarity(current_vector, historical_vectors)[0]
+            return similarities.tolist()
+
+        except ImportError:
+            # scikit-learn not available, fall back to keyword similarity
+            raise Exception("scikit-learn not available")
+
+    def _calculate_keyword_similarities(self, current_message: str, turns: List[ConversationTurn]) -> List[float]:
+        """Simple keyword-based similarity calculation"""
+        current_words = set(self._extract_keywords(current_message))
+        similarities = []
+
+        for turn in turns:
+            turn_text = f"{turn.incoming_message} {turn.response_text or ''}"
+            turn_words = set(self._extract_keywords(turn_text))
+
+            if not current_words or not turn_words:
+                similarity = 0.0
+            else:
+                # Jaccard similarity
+                intersection = len(current_words.intersection(turn_words))
+                union = len(current_words.union(turn_words))
+                similarity = intersection / union if union > 0 else 0.0
+
+                # Boost similarity for recent turns (temporal relevance)
+                time_boost = 0.1 * max(0, 1 - (len(turns) - turns.index(turn)) / len(turns))
+                similarity += time_boost
+
+                # Boost similarity based on intent matching
+                if hasattr(turn, 'intent') and turn.intent:
+                    current_intent = self._infer_simple_intent(current_message)
+                    if current_intent == turn.intent:
+                        similarity += 0.2
+
+            similarities.append(min(similarity, 1.0))  # Cap at 1.0
+
+        return similarities
+
+    def _extract_keywords(self, text: str) -> List[str]:
+        """Extract meaningful keywords from text"""
+        import re
+
+        # Simple keyword extraction
+        # Remove common stop words and short words
+        stop_words = {
+            'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you',
+            'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself',
+            'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them',
+            'their', 'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this',
+            'that', 'these', 'those', 'am', 'is', 'are', 'was', 'were', 'be', 'been',
+            'being', 'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing',
+            'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until',
+            'while', 'of', 'at', 'by', 'for', 'with', 'through', 'during', 'before',
+            'after', 'above', 'below', 'up', 'down', 'in', 'out', 'on', 'off', 'over',
+            'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when',
+            'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more',
+            'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own',
+            'same', 'so', 'than', 'too', 'very', 'can', 'will', 'just', 'should', 'now'
+        }
+
+        # Extract words (letters only, minimum length 2)
+        words = re.findall(r'\b[a-zA-Z]{2,}\b', text.lower())
+
+        # Filter out stop words and return
+        keywords = [word for word in words if word not in stop_words]
+        return keywords
+
+    def _infer_simple_intent(self, text: str) -> str:
+        """Infer simple intent from text"""
+        text_lower = text.lower()
+
+        # Question words
+        if any(word in text_lower for word in ['what', 'how', 'when', 'where', 'why', 'who', '?']):
+            return 'clarify'
+
+        # Time-related words
+        if any(word in text_lower for word in ['later', 'tomorrow', 'today', 'schedule', 'meet', 'time']):
+            return 'make_plan'
+
+        # Call-related words
+        if any(word in text_lower for word in ['call', 'phone', 'ring', 'talk']):
+            return 'setup_call'
+
+        # Default
+        return 'acknowledge'
 
 # Global context manager instance
 _context_manager = None

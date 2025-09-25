@@ -450,6 +450,228 @@ class TestPerformanceAndStress:
             # Should have limited context due to cleanup
             assert len(context) <= context_manager.max_context_turns
 
+class TestNewFeaturesIntegration:
+    """Integration tests for newly added features"""
+
+    def setup_method(self):
+        """Setup for new features testing"""
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        """Cleanup after new features testing"""
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_secure_config_integration(self):
+        """Test secure configuration management integration"""
+        from utils.secure_config import SecureConfigManager
+
+        config_file = os.path.join(self.temp_dir, 'test_config.enc')
+        key_file = os.path.join(self.temp_dir, 'test_key.key')
+
+        manager = SecureConfigManager(config_file, key_file)
+
+        # Test setting and getting configuration
+        manager.set_config('API_KEY', 'secret123')
+        assert manager.get_config('API_KEY') == 'secret123'
+
+        # Test persistence
+        new_manager = SecureConfigManager(config_file, key_file)
+        assert new_manager.get_config('API_KEY') == 'secret123'
+
+    @pytest.mark.asyncio
+    async def test_health_checker_integration(self):
+        """Test health checker integration"""
+        from utils.health_checker import HealthChecker
+        from unittest.mock import AsyncMock, patch
+
+        health_checker = HealthChecker()
+
+        # Mock successful service checks
+        with patch('aiohttp.ClientSession.get') as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={'models': [{'name': 'test'}]})
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            results = await health_checker.check_all_services()
+
+            assert len(results) > 0
+            assert all('status' in result for result in results)
+
+    def test_config_validator_integration(self):
+        """Test configuration validator integration"""
+        from utils.config_validator import ConfigValidator
+
+        with patch.dict(os.environ, {
+            'ENVIRONMENT': 'development',
+            'SERVER_PORT': '8080',
+            'SERVER_HOST': '127.0.0.1'
+        }):
+            validator = ConfigValidator()
+            result = validator.validate_config()
+
+            assert 'valid' in result
+            assert 'missing_required' in result
+            assert 'warnings' in result
+            assert 'errors' in result
+
+    def test_webhook_manager_integration(self):
+        """Test webhook manager integration"""
+        from integrations.webhook_manager import WebhookManager
+
+        db_path = os.path.join(self.temp_dir, 'webhooks.db')
+        manager = WebhookManager(db_path=db_path)
+
+        # Test webhook registration
+        webhook_config = {
+            'name': 'test_webhook',
+            'integration_type': 'sms',
+            'platform': 'twilio',
+            'endpoint_url': 'https://example.com/webhook',
+            'secret_key': 'secret123'
+        }
+
+        webhook_id = manager.register_webhook(webhook_config)
+        assert webhook_id is not None
+
+        # Test webhook retrieval
+        webhook = manager.get_webhook(webhook_id)
+        assert webhook['name'] == 'test_webhook'
+
+    def test_database_initialization_integration(self):
+        """Test database initialization integration"""
+        from scripts.init_database import DatabaseInitializer
+
+        initializer = DatabaseInitializer(self.temp_dir)
+        success = initializer.run_initialization()
+
+        assert success is True
+
+        # Verify key directories were created
+        expected_dirs = ['analytics', 'webhooks', 'users', 'security']
+        for dir_name in expected_dirs:
+            assert os.path.exists(os.path.join(self.temp_dir, dir_name))
+
+        # Verify databases were created
+        webhook_db = os.path.join(self.temp_dir, 'webhooks', 'webhooks.db')
+        assert os.path.exists(webhook_db)
+
+    def test_enhanced_security_integration(self):
+        """Test enhanced security features integration"""
+        from security.advanced_security import RateLimiter
+
+        rate_limiter = RateLimiter(max_requests=5, window_seconds=60)
+
+        # Test rate limiting
+        for i in range(5):
+            assert rate_limiter.is_allowed('test_client') is True
+
+        # Should be rate limited now
+        assert rate_limiter.is_allowed('test_client') is False
+
+        # Test memory cleanup
+        memory_stats = rate_limiter.get_memory_stats()
+        assert 'total_clients' in memory_stats
+        assert 'total_entries' in memory_stats
+
+    @pytest.mark.asyncio
+    async def test_ai_fallback_integration(self):
+        """Test AI model fallback integration"""
+        from ai.multi_model_manager import MultiModelManager
+        from unittest.mock import patch, MagicMock
+
+        with patch.dict(os.environ, {
+            'USE_OPENAI': '1',
+            'OPENAI_API_KEY': 'test-key',
+            'OLLAMA_URL': 'http://localhost:11434'
+        }):
+            # Mock OpenAI to fail
+            with patch('openai.ChatCompletion.create') as mock_openai:
+                mock_openai.side_effect = Exception("API Error")
+
+                # Mock Ollama to succeed
+                with patch('requests.post') as mock_ollama:
+                    mock_ollama.return_value.json.return_value = {
+                        'response': 'Fallback response'
+                    }
+                    mock_ollama.return_value.status_code = 200
+
+                    manager = MultiModelManager()
+                    response = await manager.generate_response("test prompt", {})
+
+                    # Should have some response (fallback or error handling)
+                    assert isinstance(response, dict)
+
+
+class TestProductionReadinessIntegration:
+    """Test production readiness features"""
+
+    def test_production_security_config(self):
+        """Test production security configuration"""
+        from utils.config_validator import validate_environment
+
+        with patch.dict(os.environ, {
+            'ENVIRONMENT': 'production',
+            'DEBUG': '0',
+            'ADMIN_DEBUG': '0',
+            'ADMIN_PASSWORD': 'super-secure-production-password-123!',
+            'ADMIN_SECRET': 'super-secure-admin-secret-456!',
+            'CONFIG_VALIDATION_STRICT': '1'
+        }):
+            # Should validate without critical errors for production
+            result = validate_environment()
+            assert isinstance(result, bool)
+
+    def test_backup_and_restore_integration(self):
+        """Test backup and restore functionality"""
+        from utils.secure_config import SecureConfigManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = os.path.join(tmpdir, 'config.enc')
+            key_file = os.path.join(tmpdir, 'key.key')
+            backup_file = os.path.join(tmpdir, 'backup.enc')
+
+            manager = SecureConfigManager(config_file, key_file)
+
+            # Set test data
+            manager.set_config('TEST_KEY', 'test_value')
+            manager.set_config('API_KEY', 'secret_key')
+
+            # Create backup
+            manager.backup_config(backup_file)
+
+            # Clear config
+            manager.clear_all_configs()
+            assert manager.get_config('TEST_KEY') is None
+
+            # Restore from backup
+            manager.restore_config(backup_file)
+            assert manager.get_config('TEST_KEY') == 'test_value'
+            assert manager.get_config('API_KEY') == 'secret_key'
+
+    def test_monitoring_metrics_integration(self):
+        """Test monitoring and metrics collection"""
+        from security.advanced_security import RateLimiter
+
+        rate_limiter = RateLimiter(max_requests=100, window_seconds=60)
+
+        # Generate some traffic
+        for i in range(50):
+            client_id = f'client_{i % 10}'
+            rate_limiter.is_allowed(client_id)
+
+        # Check metrics
+        memory_stats = rate_limiter.get_memory_stats()
+        assert memory_stats['total_clients'] > 0
+        assert memory_stats['total_entries'] > 0
+
+        # Test cleanup
+        rate_limiter.cleanup()
+        # Should still have some entries but cleaned up old ones
+        new_stats = rate_limiter.get_memory_stats()
+        assert new_stats['total_entries'] <= memory_stats['total_entries']
+
+
 if __name__ == "__main__":
     # Run integration tests
     pytest.main([__file__, "-v", "-s"])

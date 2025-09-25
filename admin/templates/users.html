@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block content %}
+  <h2>Users</h2>
+  <form method="post" action="{{ url_for('create_user') }}">
+    <input name="username" placeholder="username or phone" required>
+    <select name="role">
+      <option value="user">user</option>
+      <option value="admin">admin</option>
+    </select>
+    <input name="note" placeholder="note (optional)">
+    <button type="submit">Add</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Active</th>
+        <th>Note</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>
+            <form class="inline" method="post" action="{{ url_for('toggle_user', username=u.username) }}">
+              <select name="role">
+                <option value="user" {% if u.role == 'user' %}selected{% endif %}>user</option>
+                <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>admin</option>
+              </select>
+          </td>
+          <td>
+              <input type="checkbox" name="active" {% if u.active %}checked{% endif %} onchange="this.form.submit()">
+          </td>
+          <td>
+              <input name="note" value="{{ u.note }}" onchange="this.form.submit()">
+          </td>
+          <td>
+              <button type="submit">Save</button>
+            </form>
+            <form class="inline" method="post" action="{{ url_for('delete_user', username=u.username) }}">
+              <button type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}
+

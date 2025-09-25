@@ -54,7 +54,7 @@
         android:id="@+id/btnLicense"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="License & Activation"
+        android:text="License &amp; Activation"
         android:layout_marginTop="6dp"/>
 
     <View
@@ -97,6 +97,7 @@
             android:layout_weight="1"
             android:text="Purge Memory"
             android:layout_marginStart="8dp"/>
+    </LinearLayout>
     
     <LinearLayout
         android:orientation="horizontal"
@@ -169,9 +170,6 @@
             android:text="Import"
             android:layout_marginStart="8dp"/>
     </LinearLayout>
-
-</LinearLayout>
-
     <TextView
         android:id="@+id/memSummary"
         android:layout_width="match_parent"

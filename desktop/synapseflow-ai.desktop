@@ -1,0 +1,37 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=SynapseFlow AI
+GenericName=AI-Powered SMS Assistant
+Comment=Intelligent SMS response system with AI integration
+Icon=/home/sticky/Desktop/SMS_AI/desktop/synapseflow-ai.png
+Exec=/home/sticky/Desktop/SMS_AI/scripts/launch_kde.sh
+Path=/home/sticky/Desktop/SMS_AI
+Terminal=false
+StartupNotify=true
+Categories=Network;Communication;Office;
+Keywords=SMS;AI;ChatGPT;Messaging;Assistant;
+MimeType=text/plain;
+
+# KDE specific entries
+StartupWMClass=synapseflow-ai
+X-KDE-SubstituteUID=false
+X-KDE-Username=
+
+# Actions for KDE
+Actions=dashboard;admin;logs;
+
+[Desktop Action dashboard]
+Name=Open Dashboard
+Icon=utilities-system-monitor
+Exec=/usr/bin/xdg-open http://localhost:8081/monitoring/dashboard
+
+[Desktop Action admin]
+Name=Admin Interface
+Icon=preferences-system
+Exec=/usr/bin/xdg-open http://localhost:5050
+
+[Desktop Action logs]
+Name=View Logs
+Icon=utilities-log-viewer
+Exec=konsole --workdir /home/sticky/Desktop/SMS_AI -e tail -f synapseflow_data/logs/app/app.log

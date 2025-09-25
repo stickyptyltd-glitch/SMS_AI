@@ -84,11 +84,38 @@ class UserManager:
             return hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000).hex() == pwd_hash
         except:
             return False
+
+    def _validate_username(self, username: str) -> bool:
+        """Validate username"""
+        if not username:
+            return False
+        if len(username) < 3 or len(username) > 20:
+            return False
+        if not username.isalnum():
+            return False
+        return True
+
+    def _validate_email(self, email: str) -> bool:
+        """Validate email address"""
+        if not email:
+            return False
+        if "@" not in email or "." not in email:
+            return False
+        return True
     
     def create_user(self, username: str, password: str, email: str, role: str = "user") -> Tuple[bool, str]:
         """Create a new user"""
         if username in self.users:
             return False, "User already exists"
+        
+        if not self._validate_username(username):
+            return False, "Invalid username"
+
+        if not self._validate_email(email):
+            return False, "Invalid email address"
+
+        if len(password) < 8:
+            return False, "Password must be at least 8 characters long"
         
         if role not in ROLES:
             return False, f"Invalid role. Available: {list(ROLES.keys())}"
@@ -483,6 +510,10 @@ def require_permission(permission: str):
             # Add user info to request context
             request.current_user = user
             request.current_token = token_info
+
+            # Implement rate limiting
+            if not self._check_rate_limit(username):
+                return Response("Too Many Requests: Rate limit exceeded", status=429, mimetype="text/plain")
             
             return fn(*args, **kwargs)
         return wrapper

@@ -241,6 +241,9 @@ class InputValidator:
         """Validate email format"""
         if not email or not isinstance(email, str):
             return False
+        # RFC 5321/5322 practical maximum length is 254 characters
+        if len(email) > 254:
+            return False
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         return re.match(pattern, email.strip()) is not None
     
